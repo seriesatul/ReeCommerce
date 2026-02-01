@@ -1,43 +1,81 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { 
+  Mail, 
+  Lock, 
+  User, 
+  Eye, 
+  EyeOff, 
+  ShieldCheck, 
+  ArrowRight,
+  Loader2,
+  CheckCircle2
+} from "lucide-react";
 
 export default function RegisterPage() {
   const router = useRouter();
   
-  // 1. State management
+  // 1. FORM STATE
   const [formData, setFormData] = useState({
     name: "",
     email: "",
     password: "",
+    confirmPassword: "",
+    acceptTerms: false,
   });
+
+  // 2. UI STATE
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [passwordStrength, setPasswordStrength] = useState(0);
+
+  // 3. LIVE PASSWORD STRENGTH LOGIC
+  useEffect(() => {
+    let strength = 0;
+    if (formData.password.length >= 6) strength++;
+    if (/[A-Z]/.test(formData.password)) strength++;
+    if (/[0-9]/.test(formData.password)) strength++;
+    if (/[^A-Za-z0-9]/.test(formData.password)) strength++;
+    setPasswordStrength(strength);
+  }, [formData.password]);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setLoading(true);
     setError(null);
+
+    // Validation
+    if (formData.password !== formData.confirmPassword) {
+      setError("Passwords do not match");
+      return;
+    }
+    if (!formData.acceptTerms) {
+      setError("Please accept the terms and conditions");
+      return;
+    }
+
+    setLoading(true);
 
     try {
       const res = await fetch("/api/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          name: formData.name,
+          email: formData.email,
+          password: formData.password
+        }),
       });
 
       const data = await res.json();
 
-      if (!res.ok) {
-        // This will now catch our 400 (Validation) and 409 (Conflict) errors
-        throw new Error(data.error || "Registration failed");
-      }
+      if (!res.ok) throw new Error(data.error || "Registration failed");
 
-      // Success Path: Industry apps often use toast notifications here.
-      // For now, we redirect to the login page defined in our authOptions.
-      router.push("/login?success=Account created successfully");
+      // CONNECTED FLOW: Move directly to Buyer Onboarding (Interests/Personalization)
+      router.push("/onboarding/buyer?welcome=true");
       
     } catch (err: any) {
       setError(err.message);
@@ -47,93 +85,185 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="flex min-h-[85vh] items-center justify-center bg-gray-50 px-4">
-      <div className="w-full max-w-md space-y-8 rounded-2xl border bg-white p-10 shadow-xl">
-        <div className="text-center">
-          <h1 className="text-3xl font-extrabold text-gray-900">Create Account</h1>
-          <p className="mt-2 text-sm text-gray-600">
-            Join ReeCommerce to start shopping with reels
-          </p>
+    <div className="min-h-screen grid lg:grid-cols-2 bg-white">
+      
+      {/* LEFT SIDE: VISION/BRANDING (Desktop Only) */}
+      <div className="hidden lg:flex flex-col justify-between p-12 bg-slate-900 relative overflow-hidden">
+        {/* Abstract Background Decor */}
+        <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-600/20 blur-[120px] rounded-full -mr-48 -mt-48" />
+        <div className="absolute bottom-0 left-0 w-64 h-64 bg-indigo-500/10 blur-[80px] rounded-full -ml-32 -mb-32" />
+
+        <Link href="/" className="relative z-10 flex items-center gap-2">
+          <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center">
+            <ShieldCheck className="w-6 h-6 text-white" />
+          </div>
+          <span className="text-2xl font-black tracking-tighter text-white">ReeCommerce</span>
+        </Link>
+
+        <div className="relative z-10">
+          <h2 className="text-5xl font-black text-white leading-tight mb-6">
+            The next generation of <br />
+            <span className="text-indigo-400 italic font-serif">social commerce.</span>
+          </h2>
+          <div className="space-y-4">
+            {[
+              "Experience products through vertical video.",
+              "Follow your favorite creators and stores.",
+              "Seamless checkout in under 30 seconds."
+            ].map((text, i) => (
+              <div key={i} className="flex items-center gap-3 text-slate-400 font-medium">
+                <CheckCircle2 className="w-5 h-5 text-emerald-500" />
+                {text}
+              </div>
+            ))}
+          </div>
         </div>
 
-        {error && (
-          <div className="animate-in fade-in slide-in-from-top-1 rounded-lg bg-red-50 p-4 text-sm font-medium text-red-700 border border-red-100">
-            {error}
+        <p className="relative z-10 text-slate-500 text-sm font-bold uppercase tracking-widest">
+          EST. 2025 • JOIN THE MOVEMENT
+        </p>
+      </div>
+
+      {/* RIGHT SIDE: REGISTRATION FORM */}
+      <div className="flex items-center justify-center p-8 lg:p-16">
+        <div className="w-full max-w-md space-y-10">
+          
+          <div className="text-center lg:text-left space-y-2">
+            <h1 className="text-4xl font-black text-slate-900 tracking-tight">Create Account</h1>
+            <p className="text-slate-500 font-medium italic">Join 12,000+ shoppers today.</p>
           </div>
-        )}
 
-        <form onSubmit={handleSubmit} className="mt-8 space-y-6">
-          <div className="space-y-4">
-            <div>
-              <label htmlFor="name" className="block text-sm font-semibold text-gray-700">
-                Full Name
-              </label>
-              <input
-                id="name"
-                type="text"
-                required
-                placeholder="John Doe"
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 text-sm"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              />
+          {error && (
+            <div className="bg-red-50 border border-red-100 text-red-700 px-4 py-3 rounded-2xl text-sm font-bold flex items-center gap-3 animate-in fade-in slide-in-from-top-2">
+              <div className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" />
+              {error}
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-5">
+            {/* Full Name */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-black uppercase tracking-widest text-slate-400 ml-1">Full Name</label>
+              <div className="relative">
+                <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input
+                  type="text"
+                  required
+                  placeholder="Atul Singh"
+                  className="input-field pl-11"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                />
+              </div>
             </div>
 
-            <div>
-              <label htmlFor="email" className="block text-sm font-semibold text-gray-700">
-                Email Address
-              </label>
-              <input
-                id="email"
-                type="email"
-                required
-                placeholder="john@example.com"
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 text-sm"
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              />
+            {/* Email */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-black uppercase tracking-widest text-slate-400 ml-1">Email Address</label>
+              <div className="relative">
+                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input
+                  type="email"
+                  required
+                  placeholder="atul@example.com"
+                  className="input-field pl-11"
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                />
+              </div>
             </div>
 
-            <div>
-              <label htmlFor="password" className="block text-sm font-semibold text-gray-700">
-                Password
-              </label>
+            {/* Password */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-black uppercase tracking-widest text-slate-400 ml-1">Password</label>
+              <div className="relative">
+                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input
+                  type={showPassword ? "text" : "password"}
+                  required
+                  placeholder="••••••••"
+                  className="input-field pl-11 pr-12"
+                  value={formData.password}
+                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-900 transition-colors"
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              
+              {/* STRENGTH INDICATOR */}
+              <div className="flex gap-1 mt-2 px-1">
+                {[...Array(4)].map((_, i) => (
+                  <div 
+                    key={i} 
+                    className={`h-1 flex-1 rounded-full transition-all duration-500 ${
+                      i < passwordStrength 
+                        ? (passwordStrength <= 2 ? "bg-orange-400" : "bg-indigo-600") 
+                        : "bg-slate-100"
+                    }`} 
+                  />
+                ))}
+              </div>
+            </div>
+
+            {/* Confirm Password */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-black uppercase tracking-widest text-slate-400 ml-1">Confirm Password</label>
               <input
-                id="password"
                 type="password"
                 required
-                placeholder="••••••••"
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 text-sm"
-                value={formData.password}
-                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                className="input-field"
+                value={formData.confirmPassword}
+                onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
               />
             </div>
-          </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="group relative flex w-full justify-center rounded-lg bg-blue-600 px-4 py-3 text-sm font-bold text-white transition-all hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-70 disabled:cursor-not-allowed"
-          >
-            {loading ? (
-              <span className="flex items-center gap-2">
-                <svg className="h-4 w-4 animate-spin text-white" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                </svg>
-                Processing...
+            {/* Terms Checkbox */}
+            <label className="flex items-start gap-3 cursor-pointer group">
+              <div className="relative flex items-center justify-center mt-1">
+                <input 
+                  type="checkbox" 
+                  className="peer appearance-none w-5 h-5 border-2 border-slate-200 rounded-md checked:bg-indigo-600 checked:border-indigo-600 transition-all"
+                  checked={formData.acceptTerms}
+                  onChange={(e) => setFormData({...formData, acceptTerms: e.target.checked})}
+                />
+                <CheckCircle2 className="absolute w-3 h-3 text-white scale-0 peer-checked:scale-100 transition-transform" />
+              </div>
+              <span className="text-xs font-bold text-slate-500 group-hover:text-slate-900 transition-colors">
+                I agree to the <span className="text-indigo-600 underline">Terms of Service</span> and <span className="text-indigo-600 underline">Privacy Policy</span>.
               </span>
-            ) : (
-              "Create Account"
-            )}
-          </button>
-        </form>
+            </label>
 
-        <div className="text-center text-sm">
-          <span className="text-gray-600">Already have an account? </span>
-          <Link href="/login" className="font-bold text-blue-600 hover:text-blue-500">
-            Sign in
-          </Link>
+            {/* Submit */}
+            <button
+              type="submit"
+              disabled={loading}
+              className="btn-primary w-full py-4 text-lg flex items-center justify-center gap-2 group disabled:opacity-50"
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  <span>Creating Account...</span>
+                </>
+              ) : (
+                <>
+                  <span>Start Exploring</span>
+                  <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                </>
+              )}
+            </button>
+          </form>
+
+          <p className="text-center text-sm font-bold text-slate-500">
+            Already a member?{" "}
+            <Link href="/login" className="text-indigo-600 hover:text-indigo-700 transition-colors underline decoration-2 underline-offset-4">
+              Sign in here
+            </Link>
+          </p>
         </div>
       </div>
     </div>

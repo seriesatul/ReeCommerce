@@ -6,17 +6,20 @@ import User from "../models/User";
 import bcrypt from "bcryptjs";
 import { ENV } from "./env";
 
-// 1. Augment NextAuth types to handle custom fields like 'role'
+// 1. Augment NextAuth types to handle custom fields like 'role' and 'onboarding'
 declare module "next-auth" {
   interface Session {
     user: {
       id: string;
       role: string;
+      onboardingCompleted: boolean;
     } & DefaultSession["user"];
   }
 
   interface User {
+    id?: string;
     role?: string;
+    onboardingCompleted?: boolean;
   }
 }
 
@@ -35,7 +38,7 @@ export const authOptions: NextAuthOptions = {
 
         await connectDB();
 
-        // Industry Practice: Fetch the user and explicitly include password and role
+        // Industry Practice: Fetch user and explicitly include password and onboarding status
         const user = await User.findOne({ email: credentials.email }).select("+password");
         
         if (!user) {
@@ -52,12 +55,13 @@ export const authOptions: NextAuthOptions = {
           throw new Error("Invalid password");
         }
 
-        // Return the user object with the LATEST role from the database
+        // IMPORTANT: Return everything needed for the first JWT creation
         return { 
           id: user._id.toString(), 
           name: user.name, 
           email: user.email, 
-          role: user.role, // This will be 'seller' if they registered a store
+          role: user.role, 
+          onboardingCompleted: user.onboardingCompleted,
           image: user.image 
         };
       },
@@ -77,13 +81,23 @@ export const authOptions: NextAuthOptions = {
           const existingUser = await User.findOne({ email: user.email });
 
           if (!existingUser) {
-            await User.create({
+            const newUser = await User.create({
               name: user.name,
               email: user.email,
               image: user.image,
               provider: "google",
               role: "user",
+              onboardingCompleted: false, // Explicitly set for new Google users
             });
+            // Update user object for the callback
+            user.id = newUser._id.toString();
+            user.role = newUser.role;
+            user.onboardingCompleted = newUser.onboardingCompleted;
+          } else {
+            // Existing Google user: update callback object with DB data
+            user.id = existingUser._id.toString();
+            user.role = existingUser.role;
+            user.onboardingCompleted = existingUser.onboardingCompleted;
           }
           return true;
         } catch (error) {
@@ -94,27 +108,32 @@ export const authOptions: NextAuthOptions = {
       return true;
     },
 
-    // 3. The JWT Callback - This handles the token stored in the browser cookie
+    // 3. The JWT Callback - The engine of session persistence
     async jwt({ token, user, trigger, session }) {
-      // Handle the 'update' trigger from the frontend (useSession().update())
-      if (trigger === "update" && session?.role) {
-        token.role = session.role;
+      // HANDLE UPDATES: When useSession().update() is called on the frontend
+      if (trigger === "update" && session) {
+        if (session.role) token.role = session.role;
+        if (session.onboardingCompleted !== undefined) {
+          token.onboardingCompleted = session.onboardingCompleted;
+        }
       }
 
-      // Initial login: user object is available only the first time
+      // INITIAL LOGIN: Transfer data from User object to Token
       if (user) {
         token.role = user.role;
         token.id = user.id;
+        token.onboardingCompleted = user.onboardingCompleted;
       }
       
       return token;
     },
 
-    // 4. The Session Callback - This makes the data available to the frontend & getServerSession
+    // 4. The Session Callback - Makes data available to components & middleware
     async session({ session, token }) {
       if (session.user) {
         session.user.role = token.role as string;
         session.user.id = token.id as string;
+        session.user.onboardingCompleted = token.onboardingCompleted as boolean;
       }
       return session;
     },

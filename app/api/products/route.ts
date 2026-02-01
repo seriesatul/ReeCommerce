@@ -2,61 +2,53 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import connectDB from "@/lib/db/connect";
-import Product from "@/models/Products"; // FIXED: Singular 'Product'
+import Product from "@/models/Products"; 
 import Reel from "@/models/Reel";
 import Store from "@/models/Store";
+import Subscription from "@/models/Subscription";
+import { createNotification } from "@/lib/notifications";
 
 export async function POST(req: Request) {
   try {
-    // 1. Fetch the session
     const session = await getServerSession(authOptions);
-
-    /**
-     * DEBUGGING LOGS
-     * Check your VS Code terminal after clicking Publish.
-     * If 'role' says 'user', you MUST log out and log back in.
-     */
-    console.log("API_AUTH_CHECK:", {
-      user: session?.user?.email,
-      role: session?.user?.role,
-    });
-
-    // 2. Strict Authorization Check
     if (!session || session.user.role !== "seller") {
-      return NextResponse.json(
-        { 
-          error: "Unauthorized", 
-          details: `Current role: ${session?.user?.role || "Not logged in"}. Seller role required.` 
-        }, 
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const body = await req.json();
-    const { name, description, price, category, stock, videoUrl, thumbnailUrl } = body;
+    
+    // Destructuring all fields from our high-end Listing Studio
+    const { 
+      name, description, category, mrp, price, stock, 
+      videoUrl, thumbnailUrl, brand, sku, weight, taxDetails,
+      images, returnEligible, origin // ADDED: These support the 'Show Details' gallery
+    } = body;
 
     await connectDB();
 
-    // 3. Find the associated store
     const store = await Store.findOne({ ownerId: session.user.id });
-    if (!store) {
-      return NextResponse.json(
-        { error: "Store not found. Please register as a seller first." }, 
-        { status: 404 }
-      );
-    }
+    if (!store) return NextResponse.json({ error: "Store not found" }, { status: 404 });
 
-    // 4. Create Product & Reel (Industry Standard: Use a transaction or sequential creation)
+    // 1. Create the Product with Gallery Support
     const product = await Product.create({
       storeId: store._id,
       name,
       description,
-      price: Number(price),
       category,
+      brand,
+      sku: sku || `SKU-${Date.now()}`,
+      mrp: Number(mrp),
+      price: Number(price),
       stock: Number(stock),
-      imageUrl: thumbnailUrl,
+      weight: Number(weight) || 0,
+      taxDetails,
+      origin: origin || "India",
+      returnEligible: returnEligible ?? true,
+      imageUrl: thumbnailUrl, // Default cover
+      images: images || [],   // FIXED: Saving the gallery array for the detail page
     });
 
+    // 2. Create the linked Reel
     const reel = await Reel.create({
       storeId: store._id,
       productId: product._id,
@@ -64,20 +56,33 @@ export async function POST(req: Request) {
       thumbnailUrl,
     });
 
-    return NextResponse.json(
-      { 
-        message: "Product and Reel published successfully",
-        product, 
-        reel 
-      }, 
-      { status: 201 }
-    );
+    // 3. Subscription Broadcast (Side-effect)
+    try {
+      const followers = await Subscription.find({ sellerId: store._id });
+      // Optimized Broadcast: Send all notifications in parallel
+      await Promise.all(
+        followers.map((f) =>
+          createNotification({
+            recipientId: f.buyerId.toString(),
+            type: "NEW_REEL",
+            title: `New from ${store.name}! 🔥`,
+            message: `${store.name} just dropped a new product: ${name}`,
+            link: `/?reelId=${reel._id}`,
+          })
+        )
+      );
+    } catch (err) {
+      console.error("Non-critical: Notification broadcast failed", err);
+    }
+
+    return NextResponse.json({ 
+      message: "Listing published to marketplace",
+      product, 
+      reel 
+    }, { status: 201 });
 
   } catch (error: any) {
-    console.error("PRODUCT_POST_ERROR:", error);
-    return NextResponse.json(
-      { error: error.message || "Failed to create product" }, 
-      { status: 500 }
-    );
+    console.error("PRODUCT_CREATION_ERROR:", error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

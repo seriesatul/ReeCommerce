@@ -6,23 +6,29 @@ import Image from "next/image";
 import { Play } from "lucide-react";
 
 interface Props {
-  reel: any; // We'll use any here because of the .populate() result
+  reel: any; 
   onClick: () => void;
 }
 
 export default function ReelCard({ reel, onClick }: Props) {
+  // DEFENSIVE CHECK: Ensure the populated product exists
   const product = reel.productId as unknown as IProduct;
+
+  // If the product was deleted or failed to load, don't crash, just don't render this card.
+  if (!product || !product.name) {
+    console.warn(`Reel ${reel._id} is missing its associated product data.`);
+    return null; 
+  }
 
   return (
     <div 
       onClick={onClick}
       className="group relative cursor-pointer overflow-hidden rounded-2xl bg-slate-100 shadow-sm transition-all hover:shadow-xl hover:-translate-y-1"
     >
-      {/* Thumbnail Aspect Ratio 9:16 */}
       <div className="relative aspect-[9/16] w-full">
         <Image
           src={reel.thumbnailUrl}
-          alt={product.name}
+          alt={product.name || "Product Video"} // Use fallback string
           fill
           className="object-cover transition-transform duration-500 group-hover:scale-110"
         />
@@ -35,7 +41,7 @@ export default function ReelCard({ reel, onClick }: Props) {
         </div>
 
         {/* Product Brief Overlay */}
-        <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 via-black/40 to-transparent">
+        <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/90 via-black/40 to-transparent">
           <p className="text-white font-bold text-sm truncate">{product.name}</p>
           <p className="text-indigo-300 font-black text-lg">${product.price}</p>
         </div>

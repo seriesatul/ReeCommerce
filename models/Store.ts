@@ -1,39 +1,62 @@
 import mongoose, { Schema, model, models } from "mongoose";
 
 export interface IStore {
-  _id?: string;
   ownerId: mongoose.Types.ObjectId;
+  
+  // Phase 2: Identity
   name: string;
+  handle: string; // Unique username e.g. @techshop
   description: string;
   logoUrl?: string;
+  category: string;
+  
+  // Phase 3: Verification (Simplified for MVP)
+  verificationStatus: "pending" | "verified" | "rejected";
+  businessType: "individual" | "business";
+  panNumber?: string;
+  
+  // Phase 4: Finance
+  bankDetails?: {
+    accountNumber: string;
+    ifscCode: string;
+    holderName: string;
+  };
+  
+  // Phase 5: Operations
+  pickupAddress?: string;
+  shippingMethod: "self" | "platform";
+  
   isActive: boolean;
 }
 
 const StoreSchema = new Schema<IStore>(
   {
-    ownerId: {
-      type: Schema.Types.ObjectId,
-      ref: "User",
-      required: true,
-      unique: true, // One user = One store
+    ownerId: { type: Schema.Types.ObjectId, ref: "User", required: true, unique: true },
+    
+    // Identity
+    name: { type: String, required: true, trim: true },
+    handle: { type: String, required: true, unique: true, lowercase: true, trim: true },
+    description: { type: String, default: "" },
+    logoUrl: { type: String, default: "" },
+    category: { type: String, default: "General" },
+    
+    // Verification
+    verificationStatus: { type: String, enum: ["pending", "verified", "rejected"], default: "pending" },
+    businessType: { type: String, enum: ["individual", "business"], default: "individual" },
+    panNumber: { type: String, select: false }, // Secure field
+    
+    // Finance (Nested Object)
+    bankDetails: {
+      accountNumber: { type: String, select: false },
+      ifscCode: { type: String, select: false },
+      holderName: { type: String },
     },
-    name: {
-      type: String,
-      required: [true, "Store name is required"],
-      trim: true,
-    },
-    description: {
-      type: String,
-      required: [true, "Description is required"],
-    },
-    logoUrl: {
-      type: String,
-      default: "",
-    },
-    isActive: {
-      type: Boolean,
-      default: true,
-    },
+    
+    // Operations
+    pickupAddress: { type: String },
+    shippingMethod: { type: String, enum: ["self", "platform"], default: "platform" },
+    
+    isActive: { type: Boolean, default: true },
   },
   { timestamps: true }
 );
