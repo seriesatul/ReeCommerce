@@ -3,15 +3,33 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import connectDB from "@/lib/db/connect";
 import Cart from "@/models/Cart";
+import Product from "@/models/Products"; // 1. CRITICAL: Import the model to register the schema
 
 export async function GET() {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ items: [] });
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session) return NextResponse.json({ items: [] });
 
-  await connectDB();
-  // We populate the productId to get name, price, and image for the UI
-  const cart = await Cart.findOne({ userId: session.user.id }).populate("items.productId");
-  return NextResponse.json(cart || { items: [] });
+    await connectDB();
+
+    /**
+     * 2. INDUSTRY BEST PRACTICE: Explicit Model Registration
+     * In serverless environments, we must tell Mongoose exactly 
+     * which model to use for population to avoid MissingSchemaError.
+     */
+    const cart = await Cart.findOne({ userId: session.user.id })
+      .populate({
+        path: "items.productId",
+        model: Product, // Explicitly reference the imported model
+      })
+      .lean(); // 3. Use lean() for 3x faster performance on Vercel
+
+    return NextResponse.json(cart || { items: [] });
+  } catch (error: any) {
+    // This will appear in your Vercel Logs
+    console.error("CART_GET_CRASH:", error.message);
+    return NextResponse.json({ error: "Failed to load cart" }, { status: 500 });
+  }
 }
 
 export async function POST(req: Request) {
@@ -19,7 +37,6 @@ export async function POST(req: Request) {
     const session = await getServerSession(authOptions);
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    // FIXED: Added 'quantity' to the destructuring
     const { productId, action, quantity } = await req.json();
     
     await connectDB();
@@ -36,21 +53,16 @@ export async function POST(req: Request) {
 
     if (action === "add") {
       if (itemIndex > -1) {
-        // If it exists, increment by 1 (standard Reel "Add to Cart" behavior)
         cart.items[itemIndex].quantity += 1;
       } else {
-        // If new, add to array
         cart.items.push({ productId, quantity: 1 });
       }
     } 
-    
     else if (action === "update") {
-      // Used by the Cart Page (+/- buttons)
       if (itemIndex > -1 && quantity > 0) {
         cart.items[itemIndex].quantity = quantity;
       }
     } 
-    
     else if (action === "remove") {
       cart.items = cart.items.filter(
         (p: any) => p.productId.toString() !== productId
@@ -58,12 +70,10 @@ export async function POST(req: Request) {
     }
 
     await cart.save();
-    
-    // Return the updated cart so the frontend stays in sync
     return NextResponse.json(cart);
 
   } catch (error: any) {
-    console.error("CART_API_ERROR:", error);
+    console.error("CART_POST_ERROR:", error);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }
