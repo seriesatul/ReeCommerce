@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useCart } from "@/context/CartContext";
 import { 
   Trash2, 
@@ -8,15 +9,107 @@ import {
   ShoppingBag, 
   ArrowRight, 
   ShieldCheck, 
-  Truck 
+  Truck,
+  Loader2 // ADDED
 } from "lucide-react";
+import { useSession } from "next-auth/react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
+// UTILITY FUNCTION: Load Razorpay Script
+const loadRazorpay = () => {
+  return new Promise((resolve) => {
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
+};
+
 export default function CartPage() {
   const { items, removeFromCart, updateQuantity, cartTotal, cartCount } = useCart();
+  const { data: session } = useSession();
   const router = useRouter();
+  
+  // FIXED: Define the state for loading
+  const [isCheckingOut, setIsCheckingOut] = useState(false);
+
+  const handleCheckout = async () => {
+    // Prevent checkout if user is not logged in
+    if (!session) {
+      router.push("/login");
+      return;
+    }
+
+    setIsCheckingOut(true);
+    try {
+      // 1. Load Script
+      const res = await loadRazorpay();
+      if (!res) {
+        alert("Razorpay SDK failed to load");
+        setIsCheckingOut(false);
+        return;
+      }
+
+      // 2. Create Order on Server
+      const orderRes = await fetch("/api/checkout/create", { method: "POST" });
+      const orderData = await orderRes.json();
+
+      if (!orderRes.ok) throw new Error(orderData.error);
+
+      // 3. Open Razorpay Options
+      const options = {
+        key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+        amount: orderData.amount,
+        currency: orderData.currency,
+        name: "ReeCommerce",
+        description: "Transaction for Cart Items",
+        order_id: orderData.id, // Connects to the backend order
+        handler: async function (response: any) {
+          // 4. Verify Payment on Server
+          const verifyRes = await fetch("/api/checkout/verify", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_signature: response.razorpay_signature,
+            }),
+          });
+
+          const verifyData = await verifyRes.json();
+          
+          if (verifyData.success) {
+            router.push("/checkout/success"); // We will build this simple page next
+          } else {
+            alert("Payment Verification Failed");
+          }
+        },
+        prefill: {
+          name: session?.user?.name,
+          email: session?.user?.email,
+          contact: "9999999999", // Placeholder for MVP
+        },
+        theme: {
+          color: "#4f46e5", // Your Indigo Brand Color
+        },
+      };
+
+      const paymentObject = new (window as any).Razorpay(options);
+      paymentObject.open();
+
+    } catch (error) {
+      console.error(error);
+      alert("Checkout failed");
+    } finally {
+      // Note: We don't set false here immediately because if payment modal opens, 
+      // we want the button to stay loading until they close it or pay.
+      // But for MVP simplicity, we can reset it or let the redirect handle it.
+      setIsCheckingOut(false); 
+    }
+  };
 
   if (items.length === 0) {
     return (
@@ -124,11 +217,20 @@ export default function CartPage() {
                 </div>
               </div>
 
+              {/* FIXED: Replaced router.push with handleCheckout */}
               <button 
-                onClick={() => router.push("/checkout")}
-                className="w-full btn-primary py-5 text-xl flex items-center justify-center gap-3 shadow-indigo-200"
+                onClick={handleCheckout}
+                disabled={isCheckingOut}
+                className="w-full btn-primary py-5 text-xl flex items-center justify-center gap-3 shadow-indigo-200 disabled:opacity-70 disabled:cursor-not-allowed"
               >
-                Checkout <ArrowRight className="w-6 h-6" />
+                {isCheckingOut ? (
+                  <>
+                    <Loader2 className="w-6 h-6 animate-spin" />
+                    Processing...
+                  </>
+                ) : (
+                  <>Checkout <ArrowRight className="w-6 h-6" /></>
+                )}
               </button>
 
               {/* Trust Signals */}
