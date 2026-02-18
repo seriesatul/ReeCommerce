@@ -219,7 +219,7 @@ export default function CartPage() {
 
               {/* FIXED: Replaced router.push with handleCheckout */}
               <button 
-                onClick={handleCheckout}
+                onClick={()=>router.push("/checkout")}
                 disabled={isCheckingOut}
                 className="w-full btn-primary py-5 text-xl flex items-center justify-center gap-3 shadow-indigo-200 disabled:opacity-70 disabled:cursor-not-allowed"
               >

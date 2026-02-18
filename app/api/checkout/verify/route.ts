@@ -5,8 +5,9 @@ import { authOptions } from "@/lib/auth";
 import connectDB from "@/lib/db/connect";
 import Cart from "@/models/Cart";
 import Order from "@/models/Order";
-import Product from "@/models/Products";
-import Store from "@/models/Store";
+import Product from "@/models/Products"; 
+import Store from "@/models/Store";       
+import User from "@/models/User";         
 import { createNotification } from "@/lib/notifications";
 import { pusherServer } from "@/lib/pusher";
 
@@ -15,48 +16,56 @@ export async function POST(req: Request) {
     const session = await getServerSession(authOptions);
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+    const body = await req.json();
     const { 
       razorpay_order_id, 
       razorpay_payment_id, 
-      razorpay_signature 
-    } = await req.json();
+      razorpay_signature,
+      address // FIXED: Extracting the real address from the frontend request
+    } = body;
 
-    // 1. Verify Signature (Cryptography Check)
-    const body = razorpay_order_id + "|" + razorpay_payment_id;
-    const expectedSignature = crypto
-      .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET!)
-      .update(body.toString())
-      .digest("hex");
-
-    const isAuthentic = expectedSignature === razorpay_signature;
-
-    if (!isAuthentic) {
-      return NextResponse.json({ error: "Invalid Payment Signature" }, { status: 400 });
+    // 1. Cryptographic Signature Verification
+    const secret = process.env.RAZORPAY_KEY_SECRET;
+    if (!secret) {
+      console.error("RAZORPAY_KEY_SECRET is missing in ENV");
+      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
     }
 
-    // 2. Payment Verified! Now Process the Order
+    const generated_signature = crypto
+      .createHmac("sha256", secret)
+      .update(razorpay_order_id + "|" + razorpay_payment_id)
+      .digest("hex");
+
+    if (generated_signature !== razorpay_signature) {
+      return NextResponse.json({ error: "Payment verification failed" }, { status: 400 });
+    }
+
+    // 2. Database Processing
     await connectDB();
-    const cart = await Cart.findOne({ userId: session.user.id }).populate("items.productId");
-
-    if (!cart) return NextResponse.json({ error: "Cart not found" }, { status: 404 });
-
-    // Group items by Store (Since ReeCommerce is a multi-seller platform)
-    // We create one Order per Store (Amazon style split-order)
-    const storeGroups: any = {};
     
-    for (const item of cart.items) {
+    // Populate products to get prices and store IDs for routing the money
+    const cart = await Cart.findOne({ userId: session.user.id }).populate({
+        path: "items.productId",
+        model: Product
+    });
+
+    if (!cart || cart.items.length === 0) {
+      return NextResponse.json({ error: "Cart is empty or already processed" }, { status: 404 });
+    }
+
+    // MULTIVENDOR LOGIC: Group items by Store
+    const storeGroups: Record<string, any[]> = {};
+    cart.items.forEach((item: any) => {
       const storeId = item.productId.storeId.toString();
       if (!storeGroups[storeId]) storeGroups[storeId] = [];
       storeGroups[storeId].push(item);
-    }
+    });
 
-    const createdOrders = [];
+    // Create unique orders for each seller involved in the cart
+    const orderPromises = Object.entries(storeGroups).map(async ([storeId, items]) => {
+      const totalAmount = items.reduce((sum, item) => sum + (item.productId.price * item.quantity), 0);
 
-    // Create Order for each Store
-    for (const storeId in storeGroups) {
-      const items = storeGroups[storeId];
-      const totalAmount = items.reduce((acc: number, i: any) => acc + (i.productId.price * i.quantity), 0);
-
+      // Create the Order Document with the Real Address
       const newOrder = await Order.create({
         buyerId: session.user.id,
         storeId: storeId,
@@ -69,54 +78,56 @@ export async function POST(req: Request) {
         totalAmount,
         status: "processing",
         paymentStatus: "completed",
-        shippingAddress: "Default Address (MVP)", // In Phase 5 we add Address Book
+        razorpayOrderId: razorpay_order_id,
+        razorpayPaymentId: razorpay_payment_id,
+        shippingAddress: address // FIXED: Saving the actual address provided by user
       });
 
-      createdOrders.push(newOrder);
-
-      // Decrement Stock
+      // INVENTORY MANAGEMENT: Decrement Stock
       for (const item of items) {
-        await Product.findByIdAndUpdate(item.productId._id, {
-          $inc: { stock: -item.quantity }
-        });
+        await Product.findByIdAndUpdate(item.productId._id, { $inc: { stock: -item.quantity } });
       }
 
-      // NOTIFY SELLER (Real-time!)
-      const store = await Store.findById(storeId);
+      // NOTIFICATIONS & REAL-TIME UPDATES
+      const store = await Store.findById(storeId).populate({
+        path: "ownerId",
+        model: User
+      });
+
       if (store) {
+        const sellerUserId = (store.ownerId as any)._id.toString();
+
+        // Save to Database Notifications
         await createNotification({
-          recipientId: store.ownerId.toString(),
+          recipientId: sellerUserId,
           type: "PURCHASE",
-          title: "New Order Received! 💰",
-          message: `You sold items worth ₹${totalAmount}`,
-          link: `/dashboard/seller/orders`
+          title: "New Order! 💰",
+          message: `Order #${newOrder._id.toString().slice(-6)} received for ₹${totalAmount}`,
+          link: "/dashboard/seller/orders"
         });
-        
-        // Trigger Live Revenue Update on Dashboard
-        await pusherServer.trigger(`seller-${store.ownerId}`, "new-sale", {
-           revenue: totalAmount,
-           orderId: newOrder._id
+
+        // Trigger Real-Time WebSocket Event via Pusher
+        await pusherServer.trigger(`user-${sellerUserId}`, "new-notification", {
+            title: "New Sale! 💰",
+            message: `You just made ₹${totalAmount}`,
+            type: "PURCHASE",
+            link: "/dashboard/seller/orders"
         });
       }
-    }
 
-    // 3. Clear Cart
+      return newOrder;
+    });
+
+    await Promise.all(orderPromises);
+
+    // 3. Clear Cart after successful order generation
     cart.items = [];
     await cart.save();
 
-    // 4. Notify Buyer
-    await createNotification({
-      recipientId: session.user.id,
-      type: "SYSTEM",
-      title: "Order Placed Successfully! 🎉",
-      message: `Your payment for ₹${createdOrders.reduce((a,b) => a+b.totalAmount, 0)} was successful.`,
-      link: `/orders` // We will build this page later
-    });
-
-    return NextResponse.json({ success: true, orderIds: createdOrders.map(o => o._id) });
+    return NextResponse.json({ success: true });
 
   } catch (error: any) {
-    console.error("PAYMENT_VERIFY_ERROR:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("VERIFICATION_CRASH:", error);
+    return NextResponse.json({ error: "Order fulfillment failed" }, { status: 500 });
   }
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, Suspense } from "react";
-import { signIn } from "next-auth/react";
+import { signIn, useSession } from "next-auth/react"; // ADDED: useSession for status check
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { 
@@ -16,10 +16,9 @@ import {
   AlertCircle
 } from "lucide-react";
 
-// Using a wrapper component because useSearchParams requires a Suspense boundary in Next.js
 export default function LoginPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-white flex items-center justify-center"><Loader2 className="animate-spin" /></div>}>
+    <Suspense fallback={<div className="min-h-screen bg-white flex items-center justify-center"><Loader2 className="animate-spin text-indigo-600" /></div>}>
       <LoginForm />
     </Suspense>
   );
@@ -28,15 +27,22 @@ export default function LoginPage() {
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { data: session, status } = useSession(); // ADDED: Track auth status
   
-  // 1. STATE
   const [formData, setFormData] = useState({ email: "", password: "" });
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // 2. CHECK FOR URL ALERTS (e.g., from registration success)
+  // --- 1. BUG FIX: Redirection Protection ---
+  // If the user is already authenticated, don't let them stay on this page.
+  useEffect(() => {
+    if (status === "authenticated") {
+      window.location.replace("/"); // Use replace to prevent "Back" button loops
+    }
+  }, [status]);
+
   useEffect(() => {
     const msg = searchParams.get("success");
     const err = searchParams.get("error");
@@ -50,31 +56,49 @@ function LoginForm() {
     setError(null);
     setSuccess(null);
 
-    const result = await signIn("credentials", {
-      redirect: false,
-      email: formData.email,
-      password: formData.password,
-    });
+    try {
+      const result = await signIn("credentials", {
+        redirect: false, // We handle manual redirect for better reliability
+        email: formData.email.toLowerCase(),
+        password: formData.password,
+      });
 
-    if (result?.error) {
-      setError(result.error);
+      if (result?.error) {
+        setError(result.error);
+        setLoading(false);
+      } else {
+        // --- 2. BUG FIX: The "Hard Redirect" ---
+        // Industry Standard: Use window.location instead of router.push for Auth.
+        // This clears the Next.js router cache and ensures Middleware/Server Components 
+        // read the fresh session cookie.
+        window.location.href = "/"; 
+      }
+    } catch (err) {
+      setError("Connection error. Please try again.");
       setLoading(false);
-    } else {
-      router.push("/");
-      router.refresh();
     }
   };
+
+  // Prevent "Flicker" where user sees form for a split second while logged in
+  if (status === "loading" || status === "authenticated") {
+    return (
+      <div className="min-h-screen bg-white flex flex-col items-center justify-center space-y-4">
+        <Loader2 className="w-12 h-12 animate-spin text-indigo-600" />
+        <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Verifying Session</p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen grid lg:grid-cols-2 bg-white">
       
-      {/* LEFT SIDE: BRANDING (Consistent with Register Page) */}
+      {/* LEFT SIDE: BRANDING */}
       <div className="hidden lg:flex flex-col justify-between p-12 bg-slate-900 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-600/20 blur-[120px] rounded-full -mr-48 -mt-48" />
         
         <Link href="/" className="relative z-10 flex items-center gap-2">
-          <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center">
-            <ShieldCheck className="w-6 h-6 text-white" />
+          <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white">
+            <ShieldCheck className="w-6 h-6" />
           </div>
           <span className="text-2xl font-black tracking-tighter text-white">ReeCommerce</span>
         </Link>
@@ -84,13 +108,13 @@ function LoginForm() {
             Welcome back to the <br />
             <span className="text-indigo-400 italic font-serif">future of shopping.</span>
           </h2>
-          <p className="text-slate-400 text-lg font-medium max-w-md">
-            Log in to access your personalized feed, saved reels, and track your orders.
+          <p className="text-slate-400 text-lg font-medium max-w-md leading-relaxed">
+            Experience commerce in motion. Log in to access your curated feed and verified seller deals.
           </p>
         </div>
 
         <p className="relative z-10 text-slate-500 text-sm font-bold uppercase tracking-widest">
-          EST. 2025 • PREMIUM SOCIAL COMMERCE
+          Est. 2025 • Secured Connection
         </p>
       </div>
 
@@ -103,7 +127,6 @@ function LoginForm() {
             <p className="text-slate-500 font-medium">Enter your credentials to continue.</p>
           </div>
 
-          {/* ALERTS */}
           <div className="space-y-3">
             {success && (
               <div className="bg-emerald-50 border border-emerald-100 text-emerald-700 px-4 py-3 rounded-2xl text-sm font-bold flex items-center gap-3 animate-in fade-in slide-in-from-top-2">
@@ -120,7 +143,6 @@ function LoginForm() {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Email */}
             <div className="space-y-1.5">
               <label className="text-xs font-black uppercase tracking-widest text-slate-400 ml-1">Email Address</label>
               <div className="relative">
@@ -136,11 +158,10 @@ function LoginForm() {
               </div>
             </div>
 
-            {/* Password */}
             <div className="space-y-1.5">
               <div className="flex justify-between items-center px-1">
                 <label className="text-xs font-black uppercase tracking-widest text-slate-400">Password</label>
-                <Link href="#" className="text-[10px] font-bold text-indigo-600 hover:underline uppercase tracking-tighter">Forgot Password?</Link>
+                <Link href="#" className="text-[10px] font-bold text-indigo-600 hover:underline uppercase tracking-tighter transition-colors">Forgot?</Link>
               </div>
               <div className="relative">
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -181,25 +202,25 @@ function LoginForm() {
             </button>
           </form>
 
-          {/* SOCIAL LOGIN */}
           <div className="space-y-4">
             <div className="relative flex items-center">
               <div className="flex-grow border-t border-slate-100"></div>
-              <span className="flex-shrink mx-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Or use social</span>
+              <span className="flex-shrink mx-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Secure Social Access</span>
               <div className="flex-grow border-t border-slate-100"></div>
             </div>
 
             <button
+              type="button"
               onClick={() => signIn("google")}
-              className="w-full flex items-center justify-center gap-3 py-3 rounded-2xl border-2 border-slate-100 font-bold text-slate-700 hover:bg-slate-50 hover:border-slate-200 transition-all active:scale-[0.98]"
+              className="w-full flex items-center justify-center gap-3 py-3.5 rounded-2xl border-2 border-slate-100 font-bold text-slate-700 hover:bg-slate-50 hover:border-slate-200 transition-all active:scale-[0.98]"
             >
               <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="h-5 w-5" />
-              Sign in with Google
+              Continue with Google
             </button>
           </div>
 
           <p className="text-center text-sm font-bold text-slate-500">
-            New to the platform?{" "}
+            First time?{" "}
             <Link href="/register" className="text-indigo-600 hover:text-indigo-700 transition-colors underline decoration-2 underline-offset-4">
               Create an account
             </Link>

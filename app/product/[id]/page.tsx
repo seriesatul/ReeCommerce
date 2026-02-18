@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import { 
   ShoppingBag, ShieldCheck, Truck, ArrowLeft, 
-  Star, Store, Loader2, Package, AlertCircle 
+  Star, Store, Loader2, Package, AlertCircle, CreditCard 
 } from "lucide-react";
 import { useCart } from "@/context/CartContext";
 import { IProduct } from "@/models/Products";
@@ -24,14 +24,15 @@ export default function ProductDetailPage() {
   const router = useRouter();
   const { addToCart } = useCart();
   
-  // 2. FIXED: Change <IProduct | null> to <PopulatedProduct | null>
-  // This tells TypeScript that storeId is an object with a name, not just an ID.
+  // --- STATES ---
+  // FIXED: Applied the PopulatedProduct interface to state
   const [product, setProduct] = useState<PopulatedProduct | null>(null);
   const [activeImage, setActiveImage] = useState<string>(""); 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
 
+  // --- DATA FETCHING ---
   useEffect(() => {
     const fetchProduct = async () => {
       try {
@@ -51,11 +52,30 @@ export default function ProductDetailPage() {
     if (id) fetchProduct();
   }, [id]);
 
+  // --- UI HANDLERS ---
   const handleAddToCart = async () => {
     if (!product) return;
     setAdding(true);
     await addToCart(product);
     setAdding(false);
+  };
+
+  /**
+   * BUG FIX: handleBuyNow
+   * Industry Pattern: Adds the item to the persistent cart state 
+   * and immediately triggers a navigation to the checkout flow.
+   */
+  const handleBuyNow = async () => {
+    if (!product) return;
+    setAdding(true);
+    try {
+      await addToCart(product);
+      router.push("/checkout");
+    } catch (err) {
+      console.error("Buy Now failed", err);
+    } finally {
+      setAdding(false);
+    }
   };
 
   if (loading) return (
@@ -78,6 +98,7 @@ export default function ProductDetailPage() {
 
   return (
     <div className="min-h-screen bg-white pb-32">
+      {/* 1. NAVIGATION */}
       <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-slate-100 px-6 py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <button onClick={() => router.back()} className="group flex items-center gap-2 text-slate-900 font-bold transition-all">
@@ -86,7 +107,7 @@ export default function ProductDetailPage() {
           </button>
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">In Stock & Verified</span>
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Live Inventory Verified</span>
           </div>
           <div className="w-10" /> 
         </div>
@@ -95,6 +116,7 @@ export default function ProductDetailPage() {
       <div className="max-w-7xl mx-auto px-6 lg:px-12 py-10">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 xl:gap-24 items-start">
           
+          {/* 2. MEDIA GALLERY */}
           <div className="space-y-6 sticky top-28">
             <div className="relative aspect-square w-full rounded-4xl overflow-hidden bg-slate-50 border border-slate-100 shadow-2xl shadow-slate-200">
               <Image 
@@ -121,38 +143,37 @@ export default function ProductDetailPage() {
             </div>
           </div>
 
+          {/* 3. PRODUCT SPECIFICATIONS */}
           <div className="flex flex-col space-y-10">
             <div className="space-y-6">
               <div className="flex flex-wrap items-center gap-3">
                 <div className="flex items-center gap-2 bg-slate-900 text-white px-4 py-1.5 rounded-full">
                   <Store className="w-3.5 h-3.5" />
                   <span className="text-[10px] font-black uppercase tracking-tighter">
-                    {/* TypeScript will no longer complain here */}
                     {product.storeId?.name || "Official Store"}
                   </span>
                 </div>
                 <div className="flex items-center gap-1.5 px-4 py-1.5 bg-amber-50 rounded-full border border-amber-100">
                   <Star className="w-3.5 h-3.5 fill-amber-500 text-amber-500" />
-                  <span className="text-[10px] font-black text-amber-700 uppercase">4.9 Creator Rating</span>
+                  <span className="text-[10px] font-black text-amber-700 uppercase">4.9 Shop Rating</span>
                 </div>
               </div>
               
-              {/* FIXED: Applied 'wrap-break-word' as suggested by linter */}
-              <h1 className="text-6xl font-black text-slate-900 tracking-tight leading-[0.85] wrap-break-word">
+              <h1 className="text-5xl font-black text-slate-900 tracking-tight leading-[0.85] wrap-break-word">
                 {product.name}
               </h1>
               
               <div className="flex items-end gap-4">
-                <span className="text-5xl font-black text-slate-900 tracking-tighter">${product.price}</span>
+                <span className="text-5xl font-black text-slate-900 tracking-tighter">₹{product.price}</span>
                 <div className="flex flex-col mb-1">
-                   <span className="text-sm text-slate-400 line-through font-bold">${product.mrp}</span>
-                   <span className="text-xs font-black text-emerald-600 uppercase tracking-widest">{discountPercent}% OFF Today</span>
+                   <span className="text-sm text-slate-400 line-through font-bold">₹{product.mrp}</span>
+                   <span className="text-xs font-black text-emerald-600 uppercase tracking-widest">{discountPercent}% Limited Offer</span>
                 </div>
               </div>
             </div>
 
             <div className="space-y-4">
-              <h3 className="text-xs font-black uppercase text-slate-400 tracking-[0.2em]">Product Bio</h3>
+              <h3 className="text-xs font-black uppercase text-slate-400 tracking-[0.2em]">Description</h3>
               <div className="bg-slate-50 p-8 rounded-4xl border border-slate-100">
                 <p className="text-slate-600 leading-relaxed font-medium">
                   {product.description}
@@ -167,7 +188,7 @@ export default function ProductDetailPage() {
                  </div>
                  <div>
                     <p className="text-[10px] font-black uppercase text-slate-400">Shipping</p>
-                    <p className="text-sm font-bold text-slate-900">Free Express</p>
+                    <p className="text-sm font-bold text-slate-900">Pan-India Free</p>
                  </div>
                </div>
                <div className="bg-white border border-slate-100 p-5 rounded-3xl flex items-center gap-4 group hover:border-indigo-600 transition-all">
@@ -175,28 +196,34 @@ export default function ProductDetailPage() {
                     <ShieldCheck className="w-5 h-5" />
                  </div>
                  <div>
-                    <p className="text-[10px] font-black uppercase text-slate-400">Authentic</p>
-                    <p className="text-sm font-bold text-slate-900">Verified HQ</p>
+                    <p className="text-[10px] font-black uppercase text-slate-400">Security</p>
+                    <p className="text-sm font-bold text-slate-900">Verified Seller</p>
                  </div>
                </div>
             </div>
 
+            {/* ACTION CTAs */}
             <div className="flex flex-col sm:flex-row gap-4 pt-4">
               <button 
                 onClick={handleAddToCart}
                 disabled={adding || product.stock === 0}
-                className="flex-[1.5] bg-slate-900 text-white py-6 rounded-3xl font-black text-xl hover:bg-slate-800 active:scale-[0.98] transition-all flex items-center justify-center gap-3 shadow-2xl shadow-slate-200 disabled:bg-slate-200 disabled:text-slate-400"
+                className="flex-[1.2] bg-white text-slate-900 border-2 border-slate-200 py-5 rounded-3xl font-black text-lg hover:border-slate-900 active:scale-[0.98] transition-all flex items-center justify-center gap-3 disabled:opacity-50"
               >
                 {adding ? <Loader2 className="animate-spin" /> : <><ShoppingBag className="w-6 h-6" /> Add to Bag</>}
               </button>
               
               <button 
-                disabled={product.stock === 0}
-                className="flex-1 bg-indigo-600 text-white py-6 rounded-3xl font-black text-xl hover:bg-indigo-700 active:scale-[0.98] transition-all shadow-2xl shadow-indigo-200 disabled:bg-slate-200"
+                onClick={handleBuyNow}
+                disabled={adding || product.stock === 0}
+                className="flex-[1.5] bg-indigo-600 text-white py-5 rounded-3xl font-black text-lg hover:bg-indigo-700 active:scale-[0.98] transition-all shadow-2xl shadow-indigo-200 flex items-center justify-center gap-3 disabled:bg-slate-200"
               >
-                Buy Now
+                {adding ? <Loader2 className="animate-spin" /> : <><CreditCard className="w-6 h-6" /> Buy It Now</>}
               </button>
             </div>
+
+            <p className="text-center text-[10px] font-bold text-slate-400 uppercase tracking-[0.3em]">
+              Secure Payments by Razorpay
+            </p>
           </div>
         </div>
       </div>

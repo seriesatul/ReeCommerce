@@ -1,6 +1,5 @@
-import mongoose, { Schema, model, models, Document } from "mongoose";
+import mongoose, { Schema, model, models } from "mongoose";
 
-// 1. Define the TypeScript Interface for full type safety across the app
 export interface IProduct {
   _id: string;
   storeId: mongoose.Types.ObjectId;
@@ -12,25 +11,34 @@ export interface IProduct {
   sku: string;
   imageUrl: string;
   images: string[];
+  
+  // Pricing
   mrp: number;
   price: number;
   discount: number;
+  
+  // Inventory
   stock: number;
   lowStockThreshold: number;
-  variants: {
-    type: string;
-    value: string;
-    priceModifier: number;
-  }[];
-  weight?: number;
-  dimensions?: {
-    length: number;
-    width: number;
-    height: number;
+  
+  // Bug #5: Logistics & Volumetric Data
+  weight: number; // Physical weight in kg
+  dimensions: {
+    length: number; // in cm
+    width: number;  // in cm
+    height: number; // in cm
   };
+  volumetricWeight: number; // Computed: (L*W*H)/5000
+  
+  // Bug #6: Advanced Return Policy
+  returnPolicy: {
+    isEligible: boolean;
+    returnWindow: number; // Days (e.g., 7, 10, 30)
+    policyDetails?: string;
+  };
+  
   shippingMethod: "platform" | "self";
   dispatchTime: string;
-  returnEligible: boolean;
   warranty?: string;
   origin?: string;
   taxDetails?: string;
@@ -41,7 +49,6 @@ export interface IProduct {
 
 const ProductSchema = new Schema<IProduct>(
   {
-    // storeId is indexed because we filter by seller frequently
     storeId: { type: Schema.Types.ObjectId, ref: "Store", required: true, index: true },
     name: { type: String, required: true, trim: true },
     description: { type: String, required: true },
@@ -49,48 +56,51 @@ const ProductSchema = new Schema<IProduct>(
     subCategory: { type: String },
     brand: { type: String },
     sku: { type: String, unique: true, required: true },
-    
-    // Media
     imageUrl: { type: String, required: true }, 
     images: { type: [String], default: [] },    
-    
-    // Pricing
     mrp: { type: Number, required: true },
     price: { type: Number, required: true }, 
     discount: { type: Number, default: 0 },
-    
-    // Inventory
     stock: { type: Number, required: true, default: 0 },
     lowStockThreshold: { type: Number, default: 5 },
-    variants: [
-      {
-        type: { type: String }, 
-        value: { type: String },
-        priceModifier: { type: Number, default: 0 }
-      }
-    ],
 
-    // Logistics & Compliance
-    weight: { type: Number }, 
+    weight: { type: Number, required: true },
     dimensions: {
-      length: { type: Number },
-      width: { type: Number },
-      height: { type: Number }
+      length: { type: Number, required: true },
+      width: { type: Number, required: true },
+      height: { type: Number, required: true }
     },
+    volumetricWeight: { type: Number },
+
+    returnPolicy: {
+      isEligible: { type: Boolean, default: true },
+      returnWindow: { type: Number, default: 7 },
+      policyDetails: { type: String, default: "Standard 7-day return policy applies." }
+    },
+
     shippingMethod: { type: String, enum: ["platform", "self"], default: "platform" },
     dispatchTime: { type: String, default: "2-3 days" },
-    returnEligible: { type: Boolean, default: true },
     warranty: { type: String },
-    origin: { type: String },
+    origin: { type: String, default: "India" },
     taxDetails: { type: String }, 
-    
     isAuthentic: { type: Boolean, default: true },
   },
   { timestamps: true }
 );
 
-// Add a Text Index for Global Search (Industry Standard)
-// This allows buyers to search by Name, Brand, or Category efficiently
+/**
+ * FIXED: Industry Standard Async Middleware
+ * We use an async function and do not call 'next()'.
+ * Returning a promise (or simply being async) tells Mongoose to wait.
+ */
+ProductSchema.pre("save", async function () {
+  if (this.dimensions) {
+    const { length, width, height } = this.dimensions;
+    // Standard Formula for Domestic Shipping: (L * W * H) / 5000
+    this.volumetricWeight = parseFloat(((length * width * height) / 5000).toFixed(2));
+  }
+});
+
 ProductSchema.index({ name: "text", brand: "text", category: "text" });
 
 const Product = models?.Product || model<IProduct>("Product", ProductSchema);

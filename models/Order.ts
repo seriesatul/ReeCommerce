@@ -13,7 +13,18 @@ export interface IOrder {
   totalAmount: number;
   status: "pending" | "processing" | "shipped" | "delivered" | "cancelled";
   paymentStatus: "pending" | "completed" | "failed" | "refunded";
-  shippingAddress: string;
+  // Structured address for Bug #3 and #7 (Map integration)
+  shippingAddress: {
+    fullName: string;
+    phone: string;
+    street: string;
+    city: string;
+    state: string;
+    zipCode: string;
+    country: string;
+  };
+  razorpayOrderId?: string;
+  razorpayPaymentId?: string;
   createdAt?: Date;
 }
 
@@ -25,7 +36,7 @@ const OrderSchema = new Schema<IOrder>(
       productId: { type: Schema.Types.ObjectId, ref: "Product" },
       name: { type: String, required: true },
       quantity: { type: Number, required: true },
-      priceAtPurchase: { type: Number, required: true }, // Snapshot price
+      priceAtPurchase: { type: Number, required: true },
     }],
     totalAmount: { type: Number, required: true },
     status: { 
@@ -38,7 +49,17 @@ const OrderSchema = new Schema<IOrder>(
       enum: ["pending", "completed", "failed", "refunded"],
       default: "pending" 
     },
-    shippingAddress: { type: String, required: true },
+    shippingAddress: {
+      fullName: { type: String, required: true },
+      phone: { type: String, required: true },
+      street: { type: String, required: true },
+      city: { type: String, required: true },
+      state: { type: String, required: true },
+      zipCode: { type: String, required: true },
+      country: { type: String, default: "India" },
+    },
+    razorpayOrderId: { type: String },
+    razorpayPaymentId: { type: String },
   },
   { timestamps: true }
 );

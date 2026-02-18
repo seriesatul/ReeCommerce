@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { User, Mail, Shield, Calendar, Loader2, MoreHorizontal } from "lucide-react";
+import { Loader2, MoreHorizontal } from "lucide-react";
 
 export default function UserDirectory() {
   const [users, setUsers] = useState<any[]>([]);

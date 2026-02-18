@@ -11,14 +11,27 @@ interface CartItem {
   quantity: number;
 }
 
+// Structured Address Type
+export interface ShippingAddress {
+  fullName: string;
+  phone: string;
+  street: string;
+  city: string;
+  state: string;
+  zipCode: string;
+}
+
 interface CartContextType {
   items: CartItem[];
   addToCart: (product: any) => Promise<void>;
   removeFromCart: (productId: string) => Promise<void>;
-  updateQuantity: (productId: string, newQuantity: number) => Promise<void>; // FIXED: Added this line
+  updateQuantity: (productId: string, newQuantity: number) => Promise<void>;
   clearCart: () => void;
   cartCount: number;
   cartTotal: number;
+  // Bug #3: New State for Checkout flow
+  shippingAddress: ShippingAddress | null;
+  setShippingAddress: (address: ShippingAddress) => void;
 }
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
@@ -26,15 +39,14 @@ const CartContext = createContext<CartContextType | undefined>(undefined);
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const { data: session } = useSession();
   const [items, setItems] = useState<CartItem[]>([]);
+  const [shippingAddress, setAddressState] = useState<ShippingAddress | null>(null);
 
-  // 1. Load cart from DB on login
   useEffect(() => {
     if (session) {
       fetch("/api/cart")
         .then((res) => res.json())
         .then((data) => {
           if (data && data.items) {
-            // Map DB structure to our CartItem interface
             const formattedItems = data.items.map((item: any) => ({
               productId: item.productId._id || item.productId,
               name: item.productId.name,
@@ -46,35 +58,35 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           }
         })
         .catch((err) => console.error("Failed to load cart", err));
+        
+      // Load saved address if any
+      const savedAddress = localStorage.getItem("ree_shipping_address");
+      if (savedAddress) setAddressState(JSON.parse(savedAddress));
     }
   }, [session]);
 
+  const setShippingAddress = (address: ShippingAddress) => {
+    setAddressState(address);
+    localStorage.setItem("ree_shipping_address", JSON.stringify(address));
+  };
+
   const updateQuantity = async (productId: string, newQuantity: number) => {
     if (newQuantity < 1) return;
-
-    // Optimistic Update
     setItems((prev) =>
       prev.map((item) =>
         item.productId === productId ? { ...item, quantity: newQuantity } : item
       )
     );
-
-    // Sync with DB
     if (session) {
-      try {
-        await fetch("/api/cart", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ productId, quantity: newQuantity, action: "update" }),
-        });
-      } catch (err) {
-        console.error("Failed to sync quantity", err);
-      }
+      await fetch("/api/cart", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ productId, quantity: newQuantity, action: "update" }),
+      });
     }
   };
 
   const addToCart = async (product: any) => {
-    // Optimistic Update
     setItems((prev) => {
       const existing = prev.find((i) => i.productId === (product._id || product.productId));
       if (existing) {
@@ -82,50 +94,39 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           i.productId === (product._id || product.productId) ? { ...i, quantity: i.quantity + 1 } : i
         );
       }
-      return [
-        ...prev,
-        {
+      return [...prev, {
           productId: product._id || product.productId,
           name: product.name,
           price: product.price,
           imageUrl: product.imageUrl,
           quantity: 1,
-        },
-      ];
+      }];
     });
 
-    // Background Sync with DB
     if (session) {
-      try {
-        await fetch("/api/cart", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ productId: product._id || product.productId, action: "add" }),
-        });
-      } catch (err) {
-        console.error("Failed to add to cart in DB", err);
-      }
+      await fetch("/api/cart", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ productId: product._id || product.productId, action: "add" }),
+      });
     }
   };
 
   const removeFromCart = async (productId: string) => {
-    // Optimistic UI
     setItems((prev) => prev.filter((i) => i.productId !== productId));
-
     if (session) {
-      try {
-        await fetch("/api/cart", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ productId, action: "remove" }),
-        });
-      } catch (err) {
-        console.error("Failed to remove from cart in DB", err);
-      }
+      await fetch("/api/cart", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ productId, action: "remove" }),
+      });
     }
   };
 
-  const clearCart = () => setItems([]);
+  const clearCart = () => {
+    setItems([]);
+    if (session) fetch("/api/cart", { method: "DELETE" }); // Optional: Add a clear route
+  };
 
   const cartCount = items.reduce((acc, item) => acc + item.quantity, 0);
   const cartTotal = items.reduce((acc, item) => acc + item.price * item.quantity, 0);
@@ -136,10 +137,12 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         items,
         addToCart,
         removeFromCart,
-        updateQuantity, // This now matches the interface
+        updateQuantity,
         clearCart,
         cartCount,
         cartTotal,
+        shippingAddress,
+        setShippingAddress
       }}
     >
       {children}
