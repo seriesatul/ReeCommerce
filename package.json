@@ -13,6 +13,7 @@
     "cloudinary": "^2.9.0",
     "clsx": "^2.1.1",
     "crypto-js": "^4.2.0",
+    "framer-motion": "^12.34.3",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.563.0",
     "mongoose": "^9.1.5",

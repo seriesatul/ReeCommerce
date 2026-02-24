@@ -3,35 +3,42 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import connectDB from "@/lib/db/connect";
 import Reel from "@/models/Reel";
-import Product from "@/models/Products"; // Singular model name from plural file
+import Product from "@/models/Products"; 
 import Store from "@/models/Store";
 import Subscription from "@/models/Subscription";
 import Interaction from "@/models/Interaction";
 
 /**
- * INDUSTRY BEST PRACTICE: Smart Feed Engine
- * This API not only fetches reels but "enriches" them with the 
- * current user's interaction state (Liked/Followed).
+ * INDUSTRY BEST PRACTICE: Timeline-Aware Feed Engine
+ * This API performs "Deep Population" to fetch all products linked 
+ * to specific timestamps (hotspots) within the video.
  */
 export async function GET(req: Request) {
   try {
     const session = await getServerSession(authOptions);
     await connectDB();
 
-    // 1. Fetch Reels with optimized population
-    // We only select fields necessary for the feed to reduce payload size
+    // 1. Fetch Reels with Multi-Level Population
     const reels = await Reel.find({})
       .sort({ createdAt: -1 })
+      // Populate the primary product (backward compatibility)
       .populate({ 
         path: "productId", 
         model: Product,
         select: "name price imageUrl description mrp stock" 
       })
+      // Populate the store details
       .populate({ 
         path: "storeId", 
         model: Store,
-        // CRITICAL for Bug #4: Explicitly include handle and logoUrl for the profile link
         select: "name handle logoUrl ownerId" 
+      })
+      // NEW: Deep Populate the Hotspots timeline
+      // This ensures all products in the video are available to the frontend instantly
+      .populate({
+        path: "hotspots.productId",
+        model: Product,
+        select: "name price imageUrl description mrp stock"
       })
       .lean();
 
@@ -39,7 +46,7 @@ export async function GET(req: Request) {
     if (session?.user?.id) {
       const userId = session.user.id;
 
-      // Parallel fetching for performance
+      // Parallel fetching for performance optimization
       const [subscriptions, likes] = await Promise.all([
         Subscription.find({ buyerId: userId }).select("sellerId").lean(),
         Interaction.find({ userId, type: "like" }).select("reelId").lean()
@@ -48,22 +55,23 @@ export async function GET(req: Request) {
       const followedStoreIds = new Set(subscriptions.map(s => s.sellerId.toString()));
       const likedReelIds = new Set(likes.map(l => l.reelId.toString()));
 
-      // 3. Inject "isLiked" and "isSubscribed" flags
+      // 3. Inject "isLiked", "isSubscribed" and Format Hotspots
       const enrichedReels = reels.map((reel: any) => ({
         ...reel,
-        // Check if current user follows the store of this reel
         isSubscribed: followedStoreIds.has(reel.storeId?._id.toString()),
-        // Check if current user liked this specific reel
         isLiked: likedReelIds.has(reel._id.toString()),
       }));
 
       return NextResponse.json(enrichedReels);
     }
 
-    // Return plain reels for guest users
-    return NextResponse.json(reels);
+    // Return reels for guest users (with full hotspot product data)
+    return NextResponse.json(reels || []);
   } catch (error: any) {
-    console.error("FEED_ENGINE_ERROR:", error);
-    return NextResponse.json({ error: "Failed to load discovery feed" }, { status: 500 });
+    console.error("FEED_ENGINE_METADATA_ERROR:", error);
+    return NextResponse.json(
+      { error: "Failed to load interactive discovery feed", details: error.message }, 
+      { status: 500 }
+    );
   }
 }

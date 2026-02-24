@@ -1,41 +1,73 @@
 @import "tailwindcss";
 
 :root {
-  /* 1. Background: Pure White */
+  /* 1. Architecture: Pure White Background */
   --background: 255 255 255; 
-  /* 2. Text: Deep Black */
-  --foreground: 15 23 42; /* Slate-900 for better readability than pure #000 */
   
-  /* 3. Vibrant: Electric Indigo */
-  --primary: 79 70 229; /* Indigo 600 */
+  /* 2. Architecture: Deep Graphite Text (#0F172A) */
+  --foreground: 15 23 42; 
+  
+  /* 3. Accent: Electric Indigo */
+  --primary: 79 70 229; 
   --primary-foreground: 255 255 255;
   
-  --muted: 241 245 249; /* Slate-100 */
-  --muted-foreground: 100 116 139; /* Slate-500 */
+  /* Muted elements for Bento grids & borders */
+  --muted: 248 250 252; /* Slate-50 - Ultra subtle for premium contrast */
+  --muted-foreground: 100 116 139; 
   
-  --border: 226 232 240; /* Slate-200 */
+  --border: 241 245 249; /* Slate-100 */
 }
 
 @layer base {
   body {
-    @apply bg-white text-slate-900 antialiased;
+    @apply bg-[#FFFFFF] text-[#0F172A] antialiased selection:bg-indigo-100 selection:text-indigo-900;
   }
 }
 
 @layer components {
-  /* Industry Standard Buttons */
+  /* =========================================
+     CORE REECOMMERCE UI ARCHITECTURE
+     ========================================= */
+
+  /* Glassmorphism System */
+  .glass-panel {
+    @apply bg-white/60 backdrop-blur-2xl border border-white/40 shadow-[0_8px_30px_rgb(0,0,0,0.04)];
+  }
+
+  /* Bento Grid Card System */
+  .bento-card {
+    @apply bg-white rounded-[24px] border border-slate-100 shadow-sm transition-all duration-500 ease-out hover:shadow-xl hover:scale-[1.02] overflow-hidden;
+  }
+
+  /* Premium Status Chips */
+  .status-chip {
+    @apply inline-flex items-center justify-center px-4 py-1.5 rounded-full text-xs font-bold tracking-widest uppercase bg-slate-50 border border-slate-100 text-[#0F172A] shadow-sm;
+  }
+
+  /* High-Fidelity Button Architectures */
   .btn-primary {
-    @apply bg-indigo-600 text-white font-bold px-6 py-3 rounded-xl hover:bg-indigo-700 active:scale-95 transition-all shadow-lg shadow-indigo-200;
+    @apply bg-indigo-600 text-white font-semibold tracking-wide px-8 py-4 rounded-full hover:bg-indigo-700 hover:shadow-[0_8px_30px_rgba(79,70,229,0.3)] hover:scale-[1.02] active:scale-95 transition-all duration-300 ease-out flex items-center justify-center gap-2;
   }
+  
   .btn-secondary {
-    @apply bg-white text-slate-900 border-2 border-slate-200 font-bold px-6 py-3 rounded-xl hover:border-slate-900 transition-all;
+    @apply bg-white text-[#0F172A] border border-slate-200 font-semibold tracking-wide px-8 py-4 rounded-full hover:border-[#0F172A] hover:shadow-[0_8px_30px_rgba(15,23,42,0.08)] hover:scale-[1.02] active:scale-95 transition-all duration-300 ease-out flex items-center justify-center gap-2;
   }
+  
+  /* Form Architectures */
   .input-field {
-    @apply w-full bg-white border-2 border-slate-100 rounded-xl px-4 py-3 text-slate-900 focus:border-indigo-600 focus:ring-0 outline-none transition-all font-medium placeholder:text-slate-400;
+    @apply w-full bg-slate-50 border border-slate-200 rounded-[24px] px-6 py-4 text-[#0F172A] focus:bg-white focus:border-indigo-600 focus:ring-4 focus:ring-indigo-600/10 outline-none transition-all duration-300 font-medium placeholder:text-slate-400;
+  }
+
+  /* Custom Skeleton Loaders (No Spinners Allowed) */
+  .skeleton-shimmer {
+    @apply relative overflow-hidden bg-slate-100 rounded-[24px];
+  }
+  
+  .skeleton-shimmer::after {
+    content: "";
+    @apply absolute inset-0 -translate-x-full bg-gradient-to-r from-slate-100 via-white to-slate-100 animate-[shimmer_1.5s_infinite_ease-in-out];
   }
 }
-
-/* app/globals.css */
 
 @layer utilities {
   .no-scrollbar::-webkit-scrollbar {
@@ -44,5 +76,12 @@
   .no-scrollbar {
     -ms-overflow-style: none; /* IE and Edge */
     scrollbar-width: none; /* Firefox */
+  }
+}
+
+/* Shimmer Keyframes */
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
   }
 }

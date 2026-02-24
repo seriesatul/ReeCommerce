@@ -1,48 +1,46 @@
 "use client";
 
 import { useState, useEffect, Suspense } from "react";
-import { signIn, useSession } from "next-auth/react"; // ADDED: useSession for status check
+import { signIn, useSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { 
-  Mail, 
-  Lock, 
-  Eye, 
-  EyeOff, 
-  ShieldCheck, 
-  Loader2, 
-  ArrowRight,
-  CheckCircle2,
-  AlertCircle
+import {
+  Mail, Lock, Eye, EyeOff, Loader2,
+  ArrowRight, CheckCircle2, AlertCircle, Sparkles,
 } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-white flex items-center justify-center"><Loader2 className="animate-spin text-indigo-600" /></div>}>
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-white flex items-center justify-center">
+          <Loader2 className="w-5 h-5 animate-spin text-[#0A1628]" />
+        </div>
+      }
+    >
       <LoginForm />
     </Suspense>
   );
 }
 
 function LoginForm() {
-  const router = useRouter();
+  const { status } = useSession();
   const searchParams = useSearchParams();
-  const { data: session, status } = useSession(); // ADDED: Track auth status
-  
-  const [formData, setFormData] = useState({ email: "", password: "" });
-  const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
 
-  // --- 1. BUG FIX: Redirection Protection ---
-  // If the user is already authenticated, don't let them stay on this page.
+  const [formData, setFormData]       = useState({ email: "", password: "" });
+  const [showPassword, setShowPassword] = useState(false);
+  const [error, setError]             = useState<string | null>(null);
+  const [success, setSuccess]         = useState<string | null>(null);
+  const [loading, setLoading]         = useState(false);
+  const [focused, setFocused]         = useState<string | null>(null);
+
+  // Redirect if already logged in
   useEffect(() => {
-    if (status === "authenticated") {
-      window.location.replace("/"); // Use replace to prevent "Back" button loops
-    }
+    if (status === "authenticated") window.location.replace("/");
   }, [status]);
 
+  // URL message params
   useEffect(() => {
     const msg = searchParams.get("success");
     const err = searchParams.get("error");
@@ -55,178 +53,362 @@ function LoginForm() {
     setLoading(true);
     setError(null);
     setSuccess(null);
-
     try {
       const result = await signIn("credentials", {
-        redirect: false, // We handle manual redirect for better reliability
+        redirect: false,
         email: formData.email.toLowerCase(),
         password: formData.password,
       });
-
-      if (result?.error) {
-        setError(result.error);
-        setLoading(false);
-      } else {
-        // --- 2. BUG FIX: The "Hard Redirect" ---
-        // Industry Standard: Use window.location instead of router.push for Auth.
-        // This clears the Next.js router cache and ensures Middleware/Server Components 
-        // read the fresh session cookie.
-        window.location.href = "/"; 
-      }
-    } catch (err) {
+      if (result?.error) { setError(result.error); setLoading(false); }
+      else window.location.href = "/";
+    } catch {
       setError("Connection error. Please try again.");
       setLoading(false);
     }
   };
 
-  // Prevent "Flicker" where user sees form for a split second while logged in
+  // Session loading / already authed — prevent flicker
   if (status === "loading" || status === "authenticated") {
     return (
-      <div className="min-h-screen bg-white flex flex-col items-center justify-center space-y-4">
-        <Loader2 className="w-12 h-12 animate-spin text-indigo-600" />
-        <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Verifying Session</p>
+      <div className="min-h-screen bg-white flex flex-col items-center justify-center gap-3">
+        <Loader2 className="w-6 h-6 animate-spin text-[#0A1628]" />
+        <p
+          className="text-[10px] font-bold uppercase tracking-widest"
+          style={{ color: "#9BA8C0", fontFamily: "'DM Sans', sans-serif" }}
+        >
+          Verifying session…
+        </p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen grid lg:grid-cols-2 bg-white">
-      
-      {/* LEFT SIDE: BRANDING */}
-      <div className="hidden lg:flex flex-col justify-between p-12 bg-slate-900 relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-600/20 blur-[120px] rounded-full -mr-48 -mt-48" />
-        
-        <Link href="/" className="relative z-10 flex items-center gap-2">
-          <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white">
-            <ShieldCheck className="w-6 h-6" />
-          </div>
-          <span className="text-2xl font-black tracking-tighter text-white">ReeCommerce</span>
-        </Link>
+    <>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&display=swap');
+      `}</style>
 
-        <div className="relative z-10">
-          <h2 className="text-5xl font-black text-white leading-tight mb-6">
-            Welcome back to the <br />
-            <span className="text-indigo-400 italic font-serif">future of shopping.</span>
-          </h2>
-          <p className="text-slate-400 text-lg font-medium max-w-md leading-relaxed">
-            Experience commerce in motion. Log in to access your curated feed and verified seller deals.
-          </p>
+      <div
+        className="min-h-screen grid lg:grid-cols-[1fr_1fr] bg-white"
+        style={{ fontFamily: "'DM Sans', sans-serif" }}
+      >
+
+        {/* ══ LEFT — BRAND PANEL ════════════════════════════════ */}
+        <div
+          className="hidden lg:flex flex-col justify-between p-14 relative overflow-hidden"
+          style={{ background: "#0A1628" }}
+        >
+          {/* Subtle texture dots */}
+          <div
+            className="absolute inset-0 pointer-events-none"
+            style={{
+              backgroundImage: "radial-gradient(rgba(255,255,255,0.04) 1px, transparent 1px)",
+              backgroundSize: "28px 28px",
+            }}
+          />
+
+          {/* Top glow accent */}
+          <div
+            className="absolute top-0 right-0 w-[480px] h-[480px] pointer-events-none"
+            style={{
+              background: "radial-gradient(circle at top right, rgba(26,58,107,0.7) 0%, transparent 65%)",
+            }}
+          />
+
+          {/* Logo */}
+          <Link href="/" className="relative z-10 flex items-center gap-2.5 group w-fit">
+            <div
+              className="w-9 h-9 rounded-[9px] flex items-center justify-center transition-opacity group-hover:opacity-80"
+              style={{ background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.12)" }}
+            >
+              <Sparkles className="w-4 h-4 text-white" />
+            </div>
+            <span
+              className="text-white font-bold leading-none tracking-tight"
+              style={{ fontFamily: "'Instrument Serif', serif", fontSize: "1.3rem" }}
+            >
+              Re<em className="italic font-light">commerce</em>
+            </span>
+          </Link>
+
+          {/* Center copy */}
+          <div className="relative z-10 space-y-6">
+            <h2
+              className="leading-[0.92] tracking-tight"
+              style={{
+                fontFamily: "'Instrument Serif', Georgia, serif",
+                fontSize: "clamp(2.6rem, 4vw, 4rem)",
+                color: "white",
+                letterSpacing: "-0.025em",
+              }}
+            >
+              Welcome back
+              <br />
+              <em
+                className="italic font-light"
+                style={{ color: "rgba(255,255,255,0.38)" }}
+              >
+                to the feed.
+              </em>
+            </h2>
+            <p
+              className="leading-relaxed max-w-sm text-base"
+              style={{ color: "rgba(255,255,255,0.42)", fontWeight: 400 }}
+            >
+              Sign in to access your curated reel feed, track orders,
+              and connect with verified sellers.
+            </p>
+          </div>
+
+          {/* Bottom rule */}
+          <div className="relative z-10 flex items-center gap-3">
+            <div className="h-px flex-1" style={{ background: "rgba(255,255,255,0.08)" }} />
+            <p
+              className="text-[10px] font-bold uppercase tracking-widest"
+              style={{ color: "rgba(255,255,255,0.22)" }}
+            >
+              Secured · Est. 2025
+            </p>
+          </div>
         </div>
 
-        <p className="relative z-10 text-slate-500 text-sm font-bold uppercase tracking-widest">
-          Est. 2025 • Secured Connection
-        </p>
-      </div>
+        {/* ══ RIGHT — FORM PANEL ═══════════════════════════════ */}
+        <div className="flex items-center justify-center px-6 py-12 sm:px-10 lg:px-16">
+          <motion.div
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.55, ease: [0.16, 1, 0.3, 1] }}
+            className="w-full max-w-[400px] space-y-8"
+          >
 
-      {/* RIGHT SIDE: LOGIN FORM */}
-      <div className="flex items-center justify-center p-8 lg:p-16">
-        <div className="w-full max-w-md space-y-10">
-          
-          <div className="text-center lg:text-left space-y-2">
-            <h1 className="text-4xl font-black text-slate-900 tracking-tight">Sign In</h1>
-            <p className="text-slate-500 font-medium">Enter your credentials to continue.</p>
-          </div>
-
-          <div className="space-y-3">
-            {success && (
-              <div className="bg-emerald-50 border border-emerald-100 text-emerald-700 px-4 py-3 rounded-2xl text-sm font-bold flex items-center gap-3 animate-in fade-in slide-in-from-top-2">
-                <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />
-                {success}
+            {/* Mobile logo */}
+            <Link href="/" className="flex lg:hidden items-center gap-2 mb-2">
+              <div
+                className="w-8 h-8 rounded-[8px] flex items-center justify-center"
+                style={{ background: "#0A1628" }}
+              >
+                <Sparkles className="w-3.5 h-3.5 text-white" />
               </div>
-            )}
-            {error && (
-              <div className="bg-red-50 border border-red-100 text-red-700 px-4 py-3 rounded-2xl text-sm font-bold flex items-center gap-3 animate-in fade-in slide-in-from-top-2">
-                <AlertCircle className="w-5 h-5 text-red-500 shrink-0" />
-                {error}
-              </div>
-            )}
-          </div>
+              <span
+                className="font-bold leading-none tracking-tight"
+                style={{ fontFamily: "'Instrument Serif', serif", fontSize: "1.2rem", color: "#0A1628" }}
+              >
+                Re<em className="italic font-light">commerce</em>
+              </span>
+            </Link>
 
-          <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Heading */}
             <div className="space-y-1.5">
-              <label className="text-xs font-black uppercase tracking-widest text-slate-400 ml-1">Email Address</label>
-              <div className="relative">
-                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                <input
-                  type="email"
-                  required
-                  placeholder="name@example.com"
-                  className="input-field pl-11"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <div className="flex justify-between items-center px-1">
-                <label className="text-xs font-black uppercase tracking-widest text-slate-400">Password</label>
-                <Link href="#" className="text-[10px] font-bold text-indigo-600 hover:underline uppercase tracking-tighter transition-colors">Forgot?</Link>
-              </div>
-              <div className="relative">
-                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                <input
-                  type={showPassword ? "text" : "password"}
-                  required
-                  placeholder="••••••••"
-                  className="input-field pl-11 pr-12"
-                  value={formData.password}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-900 transition-colors"
+              <h1
+                className="leading-tight tracking-tight"
+                style={{
+                  fontFamily: "'Instrument Serif', Georgia, serif",
+                  fontSize: "clamp(1.9rem, 3vw, 2.4rem)",
+                  color: "#0A1628",
+                  letterSpacing: "-0.02em",
+                }}
+              >
+                Sign in
+              </h1>
+              <p className="text-sm" style={{ color: "#9BA8C0" }}>
+                Don't have an account?{" "}
+                <Link
+                  href="/register"
+                  className="font-semibold transition-colors"
+                  style={{ color: "#0A1628" }}
+                  onMouseEnter={e => (e.currentTarget.style.opacity = "0.6")}
+                  onMouseLeave={e => (e.currentTarget.style.opacity = "1")}
                 >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
+                  Create one →
+                </Link>
+              </p>
             </div>
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="btn-primary w-full py-4 text-lg flex items-center justify-center gap-2 group disabled:opacity-50"
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                  <span>Authenticating...</span>
-                </>
-              ) : (
-                <>
-                  <span>Sign In</span>
-                  <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-                </>
+            {/* Alerts */}
+            <AnimatePresence>
+              {success && (
+                <motion.div
+                  initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                  className="flex items-start gap-3 px-4 py-3 rounded-xl"
+                  style={{ background: "#F0FDF4", border: "1px solid #BBF7D0" }}
+                >
+                  <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                  <p className="text-sm font-semibold text-emerald-700">{success}</p>
+                </motion.div>
               )}
-            </button>
-          </form>
+              {error && (
+                <motion.div
+                  initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                  className="flex items-start gap-3 px-4 py-3 rounded-xl"
+                  style={{ background: "#FFF1F2", border: "1px solid #FECDD3" }}
+                >
+                  <AlertCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+                  <p className="text-sm font-semibold text-rose-600">{error}</p>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
-          <div className="space-y-4">
-            <div className="relative flex items-center">
-              <div className="flex-grow border-t border-slate-100"></div>
-              <span className="flex-shrink mx-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Secure Social Access</span>
-              <div className="flex-grow border-t border-slate-100"></div>
+            {/* Form */}
+            <form onSubmit={handleSubmit} className="space-y-4">
+
+              {/* Email */}
+              <div className="space-y-1.5">
+                <label
+                  className="block text-[11px] font-bold uppercase tracking-widest"
+                  style={{ color: "#9BA8C0" }}
+                >
+                  Email
+                </label>
+                <div
+                  className="relative flex items-center rounded-xl overflow-hidden transition-all duration-150"
+                  style={{
+                    border: `1px solid ${focused === "email" ? "#0A1628" : "#E4E9F2"}`,
+                    background: focused === "email" ? "white" : "#FAFAFA",
+                  }}
+                >
+                  <Mail
+                    className="absolute left-4 w-4 h-4 pointer-events-none"
+                    style={{ color: focused === "email" ? "#0A1628" : "#9BA8C0" }}
+                  />
+                  <input
+                    type="email"
+                    required
+                    placeholder="name@example.com"
+                    value={formData.email}
+                    onChange={e => setFormData({ ...formData, email: e.target.value })}
+                    onFocus={() => setFocused("email")}
+                    onBlur={() => setFocused(null)}
+                    className="w-full pl-11 pr-4 py-3.5 bg-transparent outline-none text-sm font-medium placeholder:font-normal"
+                    style={{
+                      color: "#0A1628",
+                      fontFamily: "'DM Sans', sans-serif",
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Password */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label
+                    className="block text-[11px] font-bold uppercase tracking-widest"
+                    style={{ color: "#9BA8C0" }}
+                  >
+                    Password
+                  </label>
+                  <Link
+                    href="#"
+                    className="text-[11px] font-semibold transition-opacity hover:opacity-60"
+                    style={{ color: "#0A1628" }}
+                  >
+                    Forgot password?
+                  </Link>
+                </div>
+                <div
+                  className="relative flex items-center rounded-xl overflow-hidden transition-all duration-150"
+                  style={{
+                    border: `1px solid ${focused === "password" ? "#0A1628" : "#E4E9F2"}`,
+                    background: focused === "password" ? "white" : "#FAFAFA",
+                  }}
+                >
+                  <Lock
+                    className="absolute left-4 w-4 h-4 pointer-events-none"
+                    style={{ color: focused === "password" ? "#0A1628" : "#9BA8C0" }}
+                  />
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    required
+                    placeholder="••••••••"
+                    value={formData.password}
+                    onChange={e => setFormData({ ...formData, password: e.target.value })}
+                    onFocus={() => setFocused("password")}
+                    onBlur={() => setFocused(null)}
+                    className="w-full pl-11 pr-12 py-3.5 bg-transparent outline-none text-sm font-medium placeholder:text-[#C4CDD8] placeholder:font-normal"
+                    style={{
+                      color: "#0A1628",
+                      fontFamily: "'DM Sans', sans-serif",
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(v => !v)}
+                    className="absolute right-4 transition-colors"
+                    style={{ color: "#9BA8C0" }}
+                    onMouseEnter={e => (e.currentTarget.style.color = "#0A1628")}
+                    onMouseLeave={e => (e.currentTarget.style.color = "#9BA8C0")}
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Submit */}
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-sm font-bold text-white
+                           transition-all duration-150 hover:scale-[1.01] active:scale-[0.99] disabled:opacity-60 disabled:scale-100 mt-2"
+                style={{
+                  background: "#0A1628",
+                  fontFamily: "'DM Sans', sans-serif",
+                  boxShadow: "0 4px 24px rgba(10,22,40,0.16)",
+                }}
+                onMouseEnter={e => !loading && (e.currentTarget.style.background = "#1c2e4a")}
+                onMouseLeave={e => (e.currentTarget.style.background = "#0A1628")}
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Signing in…
+                  </>
+                ) : (
+                  <>
+                    Sign In
+                    <ArrowRight className="w-4 h-4 opacity-60 group-hover:translate-x-0.5 transition-transform" />
+                  </>
+                )}
+              </button>
+            </form>
+
+            {/* Divider */}
+            <div className="flex items-center gap-4">
+              <div className="flex-1 h-px" style={{ background: "#E4E9F2" }} />
+              <span
+                className="text-[10px] font-bold uppercase tracking-widest"
+                style={{ color: "#C4CDD8" }}
+              >
+                or
+              </span>
+              <div className="flex-1 h-px" style={{ background: "#E4E9F2" }} />
             </div>
 
+            {/* Google */}
             <button
               type="button"
               onClick={() => signIn("google")}
-              className="w-full flex items-center justify-center gap-3 py-3.5 rounded-2xl border-2 border-slate-100 font-bold text-slate-700 hover:bg-slate-50 hover:border-slate-200 transition-all active:scale-[0.98]"
+              className="w-full flex items-center justify-center gap-3 py-3.5 rounded-xl text-sm font-semibold
+                         transition-all duration-150 hover:bg-[#F4F6FB] active:scale-[0.99]"
+              style={{
+                border: "1px solid #E4E9F2",
+                color: "#0A1628",
+                background: "white",
+                fontFamily: "'DM Sans', sans-serif",
+              }}
+              onMouseEnter={e => (e.currentTarget.style.borderColor = "#CBD3E8")}
+              onMouseLeave={e => (e.currentTarget.style.borderColor = "#E4E9F2")}
             >
-              <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="h-5 w-5" />
+              <img
+                src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
+                alt="Google"
+                className="w-4 h-4"
+              />
               Continue with Google
             </button>
-          </div>
 
-          <p className="text-center text-sm font-bold text-slate-500">
-            First time?{" "}
-            <Link href="/register" className="text-indigo-600 hover:text-indigo-700 transition-colors underline decoration-2 underline-offset-4">
-              Create an account
-            </Link>
-          </p>
+          </motion.div>
         </div>
+
       </div>
-    </div>
+    </>
   );
 }

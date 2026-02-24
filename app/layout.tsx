@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "../components/providers/AuthProvider";
@@ -7,36 +7,43 @@ import Navbar from "../components/ui/Navbar";
 
 const inter = Inter({ subsets: ["latin"] });
 
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false, // Prevents pinch-zoom from breaking the "Floating iPhone" / Reel UI
+  themeColor: "#FFFFFF",
+};
+
 export const metadata: Metadata = {
-  title: "ReeCommerce | Experience Shopping in Motion",
-  description: "The next generation of social commerce driven by vertical video reels.",
-  viewport: "width=device-width, initial-scale=1, maximum-scale=1",
+  title: "ReeCommerce | The Cinematic Commerce Vault",
+  description: "Architecting the next dimension of social commerce. Immerse in high-fidelity vertical retail experiences.",
 };
 
 export default function RootLayout({
   children,
-}: {
+}: Readonly<{
   children: React.ReactNode;
-}) {
+}>) {
   return (
     <html lang="en" className="scroll-smooth">
-      <body className={`${inter.className} bg-white antialiased`}>
+      <body 
+        className={`${inter.className} bg-[#FFFFFF] text-[#0F172A] antialiased min-h-screen flex flex-col overscroll-none selection:bg-slate-200 selection:text-[#0F172A]`}
+      >
         <AuthProvider>
           {/* 
-            CartProvider is placed inside AuthProvider because 
-            it needs to know if a user is logged in to sync with MongoDB.
+            CartProvider syncs the user's commerce vault with MongoDB 
+            upon successful authentication handshake. 
           */}
           <CartProvider>
             
-            {/* The Navbar now handles its own visibility logic internally */}
             <Navbar />
             
             {/* 
-               We removed 'container mx-auto' from here because 
-               the Immersive Reel Viewer and Dashboard need full-width access.
-               We handle padding inside individual pages for better control.
+               Unbound container to allow immersive Edge-to-Edge Reel viewing 
+               and expansive Bento Grid dashboard layouts. 
             */}
-            <main className="relative min-h-screen">
+            <main className="relative flex-1 w-full flex flex-col overflow-x-hidden">
               {children}
             </main>
 

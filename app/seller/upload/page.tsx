@@ -1,126 +1,143 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { 
   Video, Package, Truck, ShieldCheck, 
   ChevronRight, ChevronLeft, Loader2, 
-  Plus, X, UploadCloud, Image as ImageIcon,
-  Tag, AlertCircle, Camera, Ruler, Box, RotateCcw
+  Plus, X, UploadCloud, Tag, 
+  AlertCircle, Camera, Clock, Target, Trash2, Layout,
+  DollarSign, Ruler, RotateCcw, ImageIcon, ChevronDown
 } from "lucide-react";
 import Image from "next/image";
 
-const UPLOAD_STEPS = [
-  { id: 1, name: "Reel Content", icon: Video },
-  { id: 2, name: "Gallery & Info", icon: ImageIcon },
-  { id: 3, name: "Pricing & Stock", icon: Tag },
-  { id: 4, name: "Logistics", icon: Truck },
-];
-
-interface ProductFormData {
-  caption: string;
-  hashtags: string;
+// --- TYPES ---
+interface MultiProductEntry {
   name: string;
-  description: string;
-  category: string;
-  brand: string;
-  sku: string;
-  mrp: string;
   price: string;
+  mrp: string;
+  description: string;
   stock: string;
-  lowStockThreshold: string;
-  // Bug #5: Dimensions
+  weight: string;
   length: string;
   width: string;
   height: string;
-  weight: string;
-  taxDetails: string;
-  origin: string;
-  // Bug #6: Return Policy
+  startTime: string;
+  endTime: string;
+  x: number;
+  y: number;
+  galleryFiles: File[];
   returnEligible: boolean;
-  returnWindow: string;
-  policyDetails: string;
+}
+
+interface ProductFormData {
+  listingType: "single" | "multi";
+  caption: string;
+  hashtags: string;
+  category: string;
+  taxDetails: string;
 }
 
 export default function UploadStudio() {
   const router = useRouter();
-  const [currentStep, setCurrentStep] = useState(1);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  
+  // --- UI STATES ---
+  const [currentStep, setCurrentStep] = useState(0); 
   const [loading, setLoading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [formError, setFormError] = useState<string | null>(null);
+  const [expandedProduct, setExpandedProduct] = useState<number>(0);
 
+  // --- DATA STATES ---
   const [formData, setFormData] = useState<ProductFormData>({
+    listingType: "single",
     caption: "",
     hashtags: "",
-    name: "",
-    description: "",
     category: "Electronics",
-    brand: "",
-    sku: "",
-    mrp: "",
-    price: "",
-    stock: "",
-    lowStockThreshold: "5",
-    length: "",
-    width: "",
-    height: "",
-    weight: "",
     taxDetails: "GST 18%",
-    origin: "India",
-    returnEligible: true,
-    returnWindow: "7",
-    policyDetails: "Standard 7-day easy return policy applies.",
   });
 
+  const [products, setProducts] = useState<MultiProductEntry[]>([
+    { 
+      name: "", price: "", mrp: "", description: "", stock: "50", 
+      weight: "", length: "", width: "", height: "",
+      startTime: "0", endTime: "5", x: 50, y: 50, 
+      galleryFiles: [], returnEligible: true 
+    }
+  ]);
+
   const [videoFile, setVideoFile] = useState<File | null>(null);
-  const [coverFile, setCoverFile] = useState<File | null>(null);
-  const [galleryFiles, setGalleryFiles] = useState<File[]>([]);
 
-  // --- 1. REAL-TIME VOLUMETRIC CALCULATION ---
-  const volumetricWeight = useMemo(() => {
-    const l = parseFloat(formData.length) || 0;
-    const w = parseFloat(formData.width) || 0;
-    const h = parseFloat(formData.height) || 0;
-    return parseFloat(((l * w * h) / 5000).toFixed(2));
-  }, [formData.length, formData.width, formData.height]);
-
-  // --- 2. PERSISTENCE ENGINE ---
+  // --- 1. PERSISTENCE ---
   useEffect(() => {
-    const saved = localStorage.getItem("reecommerce_studio_draft_v4");
+    const saved = localStorage.getItem("reecommerce_studio_v7");
     if (saved) {
-      try {
-        setFormData(JSON.parse(saved));
-      } catch (e) {
-        localStorage.removeItem("reecommerce_studio_draft_v4");
-      }
-    } else {
-      setFormData(prev => ({ ...prev, sku: `SKU-${Math.random().toString(36).substr(2, 9).toUpperCase()}` }));
+      try { 
+        const parsed = JSON.parse(saved);
+        setFormData(parsed.formData);
+        // Note: Files cannot be persisted in localStorage
+      } catch (e) { localStorage.removeItem("reecommerce_studio_v7"); }
     }
   }, []);
 
   useEffect(() => {
-    localStorage.setItem("reecommerce_studio_draft_v4", JSON.stringify(formData));
+    localStorage.setItem("reecommerce_studio_v7", JSON.stringify({ formData }));
   }, [formData]);
 
-  const isStepValid = (step: number) => {
-    switch (step) {
-      case 1: return videoFile !== null && formData.caption.trim().length >= 5;
-      case 2: return formData.name.trim().length >= 3 && formData.description.trim().length >= 20 && galleryFiles.length > 0;
-      case 3: return Number(formData.mrp) > 0 && Number(formData.price) > 0;
-      case 4: return formData.length !== "" && formData.width !== "" && formData.height !== "" && formData.weight !== "";
-      default: return false;
-    }
-  };
-
+  // --- 2. HANDLERS ---
   const handleNext = () => {
     if (isStepValid(currentStep)) {
       setFormError(null);
       setCurrentStep(prev => prev + 1);
     } else {
-      setFormError("Action Required: Please complete all fields and uploads in this phase.");
+      setFormError("Action Required: Please complete all fields and uploads for this phase.");
     }
   };
 
+  const addProductSlot = () => {
+    if (products.length < 5) {
+      setProducts([...products, { 
+        name: "", price: "", mrp: "", description: "", stock: "50", 
+        weight: "", length: "", width: "", height: "",
+        startTime: "0", endTime: "5", x: 50, y: 50, 
+        galleryFiles: [], returnEligible: true 
+      }]);
+      setExpandedProduct(products.length);
+      setFormError(null);
+    } else {
+      setFormError("Platform Limit: Maximum 5 products per Lookbook.");
+    }
+  };
+
+  const removeProductSlot = (index: number) => {
+    if (products.length > 1) {
+      setProducts(products.filter((_, i) => i !== index));
+      if (expandedProduct >= index) setExpandedProduct(0);
+    }
+  };
+
+  const updateProduct = (index: number, updates: Partial<MultiProductEntry>) => {
+    const updated = [...products];
+    updated[index] = { ...updated[index], ...updates };
+    setProducts(updated);
+  };
+
+  const isStepValid = (step: number) => {
+    if (step === 0) return true;
+    if (step === 1) return videoFile !== null && formData.caption.trim().length >= 5;
+    if (step === 2) {
+      return products.every(p => 
+        p.name.length > 2 && 
+        p.price !== "" && 
+        p.galleryFiles.length > 0 &&
+        p.weight !== ""
+      );
+    }
+    return true;
+  };
+
+  // --- 3. UPLOAD ENGINE ---
   const uploadToCloudinary = async (file: File, folder: string) => {
     const timestamp = Math.round(new Date().getTime() / 1000);
     const paramsToSign = { timestamp, folder };
@@ -142,217 +159,199 @@ export default function UploadStudio() {
     try {
       const videoRes = await uploadToCloudinary(videoFile!, "reecommerce_reels");
       setUploadProgress(30);
-      let finalCoverUrl = videoRes.secure_url.replace(/\.[^/.]+$/, ".jpg");
-      if (coverFile) {
-        const coverRes = await uploadToCloudinary(coverFile, "reel_covers");
-        finalCoverUrl = coverRes.secure_url;
-      }
-      setUploadProgress(50);
-      const galleryUrls = await Promise.all(galleryFiles.map(file => uploadToCloudinary(file, "product_gallery")));
-      const images = galleryUrls.map(res => res.secure_url);
-      setUploadProgress(85);
 
-      const res = await fetch("/api/products", {
+      const processedProducts = await Promise.all(products.map(async (p) => {
+        const galleryUrls = await Promise.all(p.galleryFiles.map(f => uploadToCloudinary(f, "product_gallery")));
+        const imageUrls = galleryUrls.map(r => r.secure_url);
+        
+        return {
+          ...p,
+          imageUrl: imageUrls[0],
+          images: imageUrls,
+          price: Number(p.price),
+          mrp: Number(p.mrp),
+          stock: Number(p.stock),
+          volumetricWeight: parseFloat(((Number(p.length) * Number(p.width) * Number(p.height)) / 5000).toFixed(2))
+        };
+      }));
+      setUploadProgress(90);
+
+      const res = await fetch("/api/products/multi", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...formData,
+          products: processedProducts,
           videoUrl: videoRes.secure_url,
-          thumbnailUrl: finalCoverUrl,
-          images: images,
-          imageUrl: images[0] || finalCoverUrl,
-          dimensions: {
-            length: Number(formData.length),
-            width: Number(formData.width),
-            height: Number(formData.height)
-          },
-          returnPolicy: {
-            isEligible: formData.returnEligible,
-            returnWindow: Number(formData.returnWindow),
-            policyDetails: formData.policyDetails
-          }
+          thumbnailUrl: videoRes.secure_url.replace(/\.[^/.]+$/, ".jpg"),
         }),
       });
 
       if (res.ok) {
-        localStorage.removeItem("reecommerce_studio_draft_v4");
+        localStorage.removeItem("reecommerce_studio_v7");
         router.push("/dashboard/seller/reels");
-      } else {
-        const err = await res.json();
-        throw new Error(err.error);
       }
-    } catch (error: any) {
-      setFormError(error.message || "Critical error during publishing.");
+    } catch (e) {
+      setFormError("Platform error during high-volume upload.");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-white pb-24 text-slate-900">
-      <header className="border-b border-slate-100 bg-white/80 backdrop-blur-md sticky top-0 z-50 px-6 py-4 flex items-center justify-between">
-        <button onClick={() => router.back()} className="flex items-center gap-2 text-slate-400 hover:text-slate-900 font-bold text-sm transition-all"><ChevronLeft size={18} /> Exit Studio</button>
+    <div className="min-h-screen bg-slate-50 pb-24 text-slate-900 font-sans">
+      <header className="border-b border-slate-100 bg-white/90 backdrop-blur-md sticky top-0 z-50 px-8 py-5 flex items-center justify-between">
+        <div className="flex items-center gap-6">
+           <button onClick={() => router.back()} className="p-2 hover:bg-slate-100 rounded-full transition-all"><ChevronLeft /></button>
+           <h1 className="text-xl font-black tracking-tighter uppercase">Studio <span className="text-indigo-600">v4.5</span></h1>
+        </div>
         <div className="flex items-center gap-3">
-          {UPLOAD_STEPS.map((step) => (
-            <div key={step.id} className="flex flex-col items-center gap-1">
-              <div className={`h-1 w-14 rounded-full transition-all duration-700 ${currentStep >= step.id ? 'bg-indigo-600 shadow-sm' : 'bg-slate-100'}`} />
-              <span className={`text-[7px] font-black uppercase tracking-widest ${currentStep === step.id ? 'text-indigo-600' : 'text-slate-300'}`}>{step.name}</span>
-            </div>
+          {[0, 1, 2, 3].map(i => (
+             <div key={i} className={`h-1 w-14 rounded-full transition-all duration-700 ${currentStep >= i ? 'bg-indigo-600 shadow-sm' : 'bg-slate-200'}`} />
           ))}
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto px-6 mt-12">
-        {formError && (
-          <div className="mb-8 flex items-center gap-3 bg-rose-50 border border-rose-100 text-rose-600 p-5 rounded-3xl text-sm font-bold animate-in slide-in-from-top-2">
-            <AlertCircle size={20} /> {formError}
+      <main className="max-w-6xl mx-auto px-6 mt-12">
+        {formError && <div className="mb-8 p-5 bg-rose-50 border border-rose-100 text-rose-600 rounded-3xl font-bold flex items-center gap-3 animate-in fade-in"><AlertCircle size={20} /> {formError}</div>}
+
+        {currentStep === 0 && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 py-10 animate-in fade-in slide-in-from-bottom-4">
+             <button onClick={() => { setFormData({...formData, listingType: 'single'}); setCurrentStep(1); }} className="group p-12 rounded-[3.5rem] bg-white border-2 border-slate-100 hover:border-indigo-600 transition-all text-left space-y-6">
+                <div className="w-16 h-16 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-all"><Package size={32} /></div>
+                <h3 className="text-3xl font-black">Spotlight</h3>
+                <p className="text-slate-500 font-medium leading-relaxed">Focus on a single hero product. Best for high-conversion individual item launches.</p>
+             </button>
+             <button onClick={() => { setFormData({...formData, listingType: 'multi'}); setCurrentStep(1); }} className="group p-12 rounded-[3.5rem] bg-white border-2 border-slate-100 hover:border-indigo-600 transition-all text-left space-y-6 shadow-2xl shadow-indigo-50">
+                <div className="w-16 h-16 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-all"><Layout size={32} /></div>
+                <h3 className="text-3xl font-black">Lookbook</h3>
+                <p className="text-slate-500 font-medium leading-relaxed">Showcase up to 5 items in one video. Perfect for outfits, setups, and lifestyle collections.</p>
+             </button>
           </div>
         )}
 
-        {/* --- STEP 1: CONTENT --- */}
         {currentStep === 1 && (
-          <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4">
-            <h2 className="text-5xl font-black tracking-tighter italic">01. Content Design</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
-              <div className="space-y-4">
-                 <div onClick={() => document.getElementById('v-up')?.click()} className="aspect-9/16 rounded-4xl bg-slate-50 border-2 border-dashed border-slate-200 flex items-center justify-center overflow-hidden cursor-pointer hover:border-indigo-400 transition-all group relative">
-                    {videoFile ? <video src={URL.createObjectURL(videoFile)} className="h-full w-full object-cover" /> : 
-                    <div className="text-center"><UploadCloud size={48} className="text-slate-300 mx-auto mb-4 group-hover:text-indigo-600" /><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Select MP4 Reel</p></div>}
-                    <input id="v-up" type="file" accept="video/*" hidden onChange={(e) => setVideoFile(e.target.files?.[0] || null)} />
-                 </div>
-                 <div onClick={() => document.getElementById('c-up')?.click()} className="flex items-center gap-4 p-5 bg-slate-50 rounded-3xl border border-slate-100 cursor-pointer hover:bg-slate-100 transition-all group">
-                    <div className="w-14 h-14 bg-white rounded-2xl flex items-center justify-center border border-slate-200 text-slate-400 overflow-hidden shrink-0">
-                        {coverFile ? <img src={URL.createObjectURL(coverFile)} className="w-full h-full object-cover" alt="cover" /> : <Camera size={24} />}
-                    </div>
-                    <div><p className="text-sm font-black text-slate-900 leading-none">Reel Cover Image</p><p className="text-[10px] text-slate-400 font-bold uppercase mt-1">Optional • Static Frame</p></div>
-                    <input id="c-up" type="file" accept="image/*" hidden onChange={(e) => setCoverFile(e.target.files?.[0] || null)} />
-                 </div>
-              </div>
-              <div className="space-y-8 py-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-12 animate-in fade-in slide-in-from-bottom-4">
+             <div onClick={() => document.getElementById('v-up')?.click()} className="aspect-9/16 rounded-4xl bg-slate-100 border-2 border-dashed border-slate-300 flex items-center justify-center overflow-hidden cursor-pointer hover:border-indigo-400 transition-all group relative">
+                {videoFile ? <video src={URL.createObjectURL(videoFile)} className="h-full w-full object-cover" /> : <div className="text-center"><UploadCloud size={48} className="text-slate-300 mx-auto mb-4" /><p className="text-xs font-black text-slate-400 uppercase tracking-widest">Select Product Reel (MP4)</p></div>}
+                <input id="v-up" type="file" accept="video/*" hidden onChange={(e) => setVideoFile(e.target.files?.[0] || null)} />
+             </div>
+             <div className="space-y-6 py-4">
+                <h2 className="text-4xl font-black tracking-tighter italic leading-tight">Reel Branding</h2>
                 <div className="space-y-2">
-                  <label className="text-xs font-black uppercase text-slate-400 tracking-widest">Description Caption</label>
-                  <textarea className="input-field h-48 resize-none bg-slate-50/50" placeholder="Tell your audience about the product..." value={formData.caption} onChange={(e) => setFormData({...formData, caption: e.target.value})} />
+                   <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Caption</label>
+                   <textarea className="input-field h-44 resize-none font-medium" placeholder="What's happening in this video?" value={formData.caption} onChange={(e) => setFormData({...formData, caption: e.target.value})} />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-xs font-black uppercase text-slate-400 tracking-widest">Discovery Tags</label>
-                  <input className="input-field bg-slate-50/50" placeholder="#fashion #gadgets #2025" value={formData.hashtags} onChange={(e) => setFormData({...formData, hashtags: e.target.value})} />
+                   <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Search Keywords</label>
+                   <input className="input-field font-medium" placeholder="#tag #style #vibe" value={formData.hashtags} onChange={(e) => setFormData({...formData, hashtags: e.target.value})} />
                 </div>
-              </div>
-            </div>
+             </div>
           </div>
         )}
 
-        {/* --- STEP 2: CATALOGING --- */}
         {currentStep === 2 && (
-          <div className="space-y-10 animate-in fade-in slide-in-from-right-4">
-             <h2 className="text-5xl font-black tracking-tighter italic">02. Catalog Logic</h2>
-             <div className="grid grid-cols-2 gap-6">
-                <input className="input-field font-black text-xl" placeholder="Full Product Name" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} />
-                <select className="input-field font-bold uppercase tracking-widest text-xs" value={formData.category} onChange={(e) => setFormData({...formData, category: e.target.value})}>
-                    <option>Electronics</option><option>Fashion</option><option>Home Decor</option><option>Wellness</option>
-                </select>
+          <div className="space-y-8 animate-in fade-in slide-in-from-right-4">
+             <div className="flex items-center justify-between">
+                <h2 className="text-4xl font-black tracking-tighter italic">Catalog Logic</h2>
+                {formData.listingType === "multi" && (
+                  <button onClick={addProductSlot} className="flex items-center gap-2 bg-indigo-600 text-white px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-900 transition-all">
+                    <Plus size={16} /> Add Another Product
+                  </button>
+                )}
              </div>
-             <div className="space-y-2">
-                <label className="text-xs font-black uppercase text-slate-400 tracking-widest">Technical Specifications</label>
-                <textarea className="input-field h-40 resize-none bg-slate-50/50" placeholder="Material, warranty, technical specs..." value={formData.description} onChange={(e) => setFormData({...formData, description: e.target.value})} />
-             </div>
-             <div className="space-y-4">
-                <label className="text-xs font-black uppercase text-slate-400 tracking-widest">High-Res Gallery (Shown in 'Details')</label>
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-6">
-                    {galleryFiles.map((file, i) => (
-                        <div key={i} className="relative aspect-square rounded-3xl overflow-hidden border border-slate-100 group shadow-sm">
-                            <img src={URL.createObjectURL(file)} className="h-full w-full object-cover" alt="gallery" />
-                            <button onClick={() => setGalleryFiles(f => f.filter((_, idx) => idx !== i))} className="absolute top-2 right-2 p-1.5 bg-black/60 text-white rounded-full opacity-0 group-hover:opacity-100 transition-all"><X size={12} /></button>
+
+             <div className="space-y-6">
+                {products.map((p, i) => (
+                  <div key={i} className={`bg-white border border-slate-200 rounded-[2.5rem] overflow-hidden transition-all duration-500 ${expandedProduct === i ? 'ring-2 ring-indigo-600 shadow-2xl' : 'opacity-60 hover:opacity-100 shadow-sm'}`}>
+                     <div onClick={() => setExpandedProduct(i)} className="p-6 bg-slate-50 flex items-center justify-between cursor-pointer border-b border-slate-100">
+                        <div className="flex items-center gap-4">
+                           <div className="w-10 h-10 bg-slate-900 text-white rounded-xl flex items-center justify-center font-black">{i + 1}</div>
+                           <p className="font-black uppercase tracking-tight text-sm truncate max-w-37.5">{p.name || "Configure Item"}</p>
                         </div>
-                    ))}
-                    <label className="aspect-square rounded-3xl border-2 border-dashed border-slate-200 flex items-center justify-center cursor-pointer text-slate-300 hover:bg-slate-50 hover:border-indigo-400 transition-all shadow-sm"><Plus size={28} /><input type="file" multiple accept="image/*" hidden onChange={(e) => setGalleryFiles(prev => [...prev, ...Array.from(e.target.files || [])])} /></label>
-                </div>
+                        <div className="flex items-center gap-4">
+                           <span className="text-[10px] font-black text-indigo-600 uppercase">₹{p.price || '0.00'}</span>
+                           {products.length > 1 && <button onClick={(e) => { e.stopPropagation(); removeProductSlot(i); }} className="text-slate-300 hover:text-rose-500"><Trash2 size={18} /></button>}
+                           <ChevronDown className={`transition-transform duration-300 ${expandedProduct === i ? 'rotate-180' : ''}`} />
+                        </div>
+                     </div>
+
+                     {expandedProduct === i && (
+                        <div className="p-10 grid grid-cols-1 lg:grid-cols-2 gap-12 animate-in slide-in-from-top-2">
+                           <div className="space-y-6">
+                              <input className="input-field font-black text-xl" placeholder="Full Product Name" value={p.name} onChange={(e) => updateProduct(i, { name: e.target.value })} />
+                              <textarea className="input-field h-32 resize-none text-sm" placeholder="Tell buyers about this specific item..." value={p.description} onChange={(e) => updateProduct(i, { description: e.target.value })} />
+                              
+                              <div className="space-y-4">
+                                 <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Photo Gallery (Min 1)</label>
+                                 <div className="grid grid-cols-4 gap-4">
+                                    {p.galleryFiles.map((file, fIdx) => (
+                                       <div key={fIdx} className="relative aspect-square rounded-2xl overflow-hidden border border-slate-100 shadow-sm group">
+                                          <img src={URL.createObjectURL(file)} className="h-full w-full object-cover" alt="prev" />
+                                          <button onClick={() => updateProduct(i, { galleryFiles: p.galleryFiles.filter((_, idx) => idx !== fIdx) })} className="absolute top-1 right-1 bg-black/60 text-white rounded-full p-1"><X size={10} /></button>
+                                       </div>
+                                    ))}
+                                    <label className="aspect-square rounded-2xl border-2 border-dashed border-slate-200 flex items-center justify-center cursor-pointer hover:bg-slate-50 transition-all text-slate-300"><Plus size={24} /><input type="file" multiple accept="image/*" hidden onChange={(e) => updateProduct(i, { galleryFiles: [...p.galleryFiles, ...Array.from(e.target.files || [])] })} /></label>
+                                 </div>
+                              </div>
+                           </div>
+
+                           <div className="bg-slate-50 p-8 rounded-4xl space-y-10">
+                              <div className="grid grid-cols-2 gap-4">
+                                 <div className="space-y-1"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">MRP</label><input type="number" className="input-field" value={p.mrp} onChange={(e) => updateProduct(i, { mrp: e.target.value })} /></div>
+                                 <div className="space-y-1"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Deal Price</label><input type="number" className="input-field border-indigo-200" value={p.price} onChange={(e) => updateProduct(i, { price: e.target.value })} /></div>
+                              </div>
+
+                              <div className="space-y-4">
+                                 <div className="flex items-center gap-3 text-indigo-600"><Ruler size={16} /><span className="text-[10px] font-black uppercase tracking-widest">Dimensions (cm) & Weight (kg)</span></div>
+                                 <div className="grid grid-cols-4 gap-2">
+                                    {['length', 'width', 'height', 'weight'].map(field => (
+                                       <input key={field} className="input-field p-2 text-center text-xs font-bold" placeholder={field[0].toUpperCase()} value={(p as any)[field]} onChange={(e) => updateProduct(i, { [field]: e.target.value })} />
+                                    ))}
+                                 </div>
+                              </div>
+
+                              {formData.listingType === "multi" && (
+                                 <div className="space-y-4 pt-6 border-t border-slate-200">
+                                    <div className="flex items-center gap-3 text-indigo-600"><Clock size={16} /><span className="text-[10px] font-black uppercase tracking-widest">Active Timestamp (Seconds)</span></div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                       <input className="input-field text-center font-bold text-xs" placeholder="Show At (s)" value={p.startTime} onChange={(e) => updateProduct(i, { startTime: e.target.value })} />
+                                       <input className="input-field text-center font-bold text-xs" placeholder="Hide At (s)" value={p.endTime} onChange={(e) => updateProduct(i, { endTime: e.target.value })} />
+                                    </div>
+                                    <div className="flex items-center gap-3 text-indigo-600 pt-2"><Target size={16} /><span className="text-[10px] font-black uppercase tracking-widest">Pulse Position (%)</span></div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                       <input className="input-field text-center text-xs" placeholder="X" type="number" value={p.x} onChange={(e) => updateProduct(i, { x: Number(e.target.value) })} />
+                                       <input className="input-field text-center text-xs" placeholder="Y" type="number" value={p.y} onChange={(e) => updateProduct(i, { y: Number(e.target.value) })} />
+                                    </div>
+                                 </div>
+                              )}
+                           </div>
+                        </div>
+                     )}
+                  </div>
+                ))}
              </div>
           </div>
         )}
 
-        {/* --- STEP 3: FINANCIALS --- */}
         {currentStep === 3 && (
-            <div className="space-y-10 animate-in fade-in slide-in-from-right-4">
-                <h2 className="text-5xl font-black tracking-tighter italic">03. Financial Control</h2>
-                <div className="bg-slate-900 rounded-[3rem] p-12 grid grid-cols-2 gap-10 shadow-2xl shadow-indigo-100">
-                    {[
-                      { label: "List Price (MRP)", name: "mrp", ph: "₹ 0.00" },
-                      { label: "Deal Price (Selling)", name: "price", ph: "₹ 0.00" },
-                      { label: "Total Units in Stock", name: "stock", ph: "e.g. 100" },
-                      { label: "Internal SKU ID", name: "sku", ph: "Auto-generated" }
-                    ].map((f) => (
-                      <div key={f.name} className="space-y-2">
-                        <label className="text-[10px] font-black uppercase text-slate-500 tracking-[0.2em]">{f.label}</label>
-                        <input 
-                            className="w-full bg-slate-800 border-none rounded-2xl p-5 text-white font-black outline-none ring-1 ring-slate-700 focus:ring-indigo-500 transition-all" 
-                            value={(formData as any)[f.name]} 
-                            placeholder={f.ph}
-                            onChange={(e) => setFormData({...formData, [f.name]: e.target.value})} 
-                        />
-                      </div>
-                    ))}
-                </div>
-            </div>
+          <div className="py-24 text-center space-y-12 animate-in zoom-in-95">
+             <div className="w-24 h-24 bg-indigo-600 rounded-4xl flex items-center justify-center text-white mx-auto shadow-2xl rotate-3"><ShieldCheck size={48} /></div>
+             <div className="space-y-2">
+                <h2 className="text-5xl font-black tracking-tighter">Ready for Deployment</h2>
+                <p className="text-slate-500 font-medium max-w-sm mx-auto italic text-sm">Processing {formData.listingType === "multi" ? `${products.length} products` : "spotlight listing"}. All assets optimized for edge delivery.</p>
+             </div>
+             <button onClick={handleFinalSubmit} disabled={loading} className="btn-primary min-w-70 py-6 text-xl shadow-2xl shadow-indigo-100 flex items-center justify-center gap-4 mx-auto disabled:opacity-50">
+                {loading ? <><Loader2 className="animate-spin" /><span>Syncing {uploadProgress}%</span></> : "Publish to Marketplace"}
+             </button>
+          </div>
         )}
 
-        {/* --- STEP 4: LOGISTICS & RETURN POLICY --- */}
-        {currentStep === 4 && (
-            <div className="space-y-10 animate-in fade-in slide-in-from-right-4 pb-10">
-                <h2 className="text-5xl font-black tracking-tighter italic">04. Final Shipment</h2>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
-                  {/* Dimensions & Volumetric Section */}
-                  <div className="bg-slate-50 p-8 rounded-4xl border border-slate-100 space-y-6">
-                    <div className="flex items-center gap-3 text-indigo-600 mb-2"><Ruler size={20} /><span className="text-xs font-black uppercase tracking-widest">Dimensions (cm)</span></div>
-                    <div className="grid grid-cols-3 gap-3">
-                      {['length', 'width', 'height'].map(dim => (
-                        <input key={dim} className="input-field text-center text-sm font-bold" placeholder={dim[0].toUpperCase()} value={(formData as any)[dim]} onChange={(e) => setFormData({...formData, [dim]: e.target.value})} />
-                      ))}
-                    </div>
-                    <div className="flex items-center justify-between pt-4 border-t border-slate-200">
-                        <div><p className="text-[10px] font-black text-slate-400 uppercase">Computed Volumetric Weight</p><p className="text-xl font-black text-indigo-600">{volumetricWeight} kg</p></div>
-                        <div className="p-3 bg-white rounded-2xl shadow-sm"><Box className="text-slate-300" /></div>
-                    </div>
-                  </div>
-
-                  {/* Return Policy Section */}
-                  <div className="bg-slate-50 p-8 rounded-4xl border border-slate-100 space-y-6">
-                    <div className="flex items-center justify-between">
-                       <div className="flex items-center gap-3 text-emerald-600"><RotateCcw size={20} /><span className="text-xs font-black uppercase tracking-widest">Return Policy</span></div>
-                       <button onClick={() => setFormData(p => ({...p, returnEligible: !p.returnEligible}))} className={`w-12 h-6 rounded-full flex items-center px-1 transition-all ${formData.returnEligible ? 'bg-indigo-600' : 'bg-slate-300'}`}>
-                          <div className={`w-4 h-4 bg-white rounded-full shadow-sm transition-all ${formData.returnEligible ? 'ml-auto' : 'ml-0'}`} />
-                       </button>
-                    </div>
-                    {formData.returnEligible ? (
-                      <div className="space-y-4 animate-in fade-in zoom-in-95">
-                        <div className="flex items-center gap-4"><label className="text-[10px] font-black uppercase text-slate-400">Return Window</label><select className="bg-white border-none rounded-xl px-4 py-2 font-bold text-xs outline-none ring-1 ring-slate-200" value={formData.returnWindow} onChange={(e) => setFormData({...formData, returnWindow: e.target.value})}><option>7 Days</option><option>10 Days</option><option>30 Days</option></select></div>
-                        <textarea className="w-full bg-white border-none rounded-2xl p-4 text-xs font-medium text-slate-500 ring-1 ring-slate-200 outline-none focus:ring-indigo-600" value={formData.policyDetails} onChange={(e) => setFormData({...formData, policyDetails: e.target.value})} />
-                      </div>
-                    ) : (
-                      <p className="text-xs font-bold text-rose-500 italic py-8 text-center bg-white rounded-2xl border border-rose-100">Warning: No-Return items have lower conversion rates.</p>
-                    )}
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-6 pt-4">
-                    <input className="input-field" placeholder="Actual Weight (KG)" value={formData.weight} onChange={(e) => setFormData({...formData, weight: e.target.value})} />
-                    <input className="input-field" placeholder="Tax Info (e.g. GST 18%)" value={formData.taxDetails} onChange={(e) => setFormData({...formData, taxDetails: e.target.value})} />
-                </div>
-            </div>
-        )}
-
-        <footer className="mt-20 pt-10 border-t border-slate-100 flex items-center justify-between">
-           <button disabled={currentStep === 1 || loading} onClick={() => setCurrentStep(s => s - 1)} className="flex items-center gap-2 font-black text-slate-400 hover:text-slate-900 transition-all disabled:opacity-0"><ChevronLeft /> Back</button>
-           <div className="flex items-center gap-8">
-              <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Phase 0{currentStep} of 04</span>
-              {currentStep < 4 ? (
-                <button onClick={handleNext} className="btn-primary px-16 shadow-indigo-100">Continue <ChevronRight size={18} /></button>
-              ) : (
-                <button onClick={handleFinalSubmit} disabled={loading} className="btn-primary min-w-70 shadow-indigo-200 group">
-                  {loading ? <div className="flex items-center gap-3"><Loader2 className="animate-spin" size={20} /><span>Publishing {uploadProgress}%</span></div> : <span className="flex items-center gap-2">Launch Marketplace Reel <ShieldCheck size={18} className="group-hover:animate-bounce" /></span>}
-                </button>
-              )}
+        <footer className="mt-24 pt-12 border-t border-slate-100 flex items-center justify-between">
+           <button disabled={currentStep === 0 || loading} onClick={() => setCurrentStep(s => s - 1)} className={`flex items-center gap-2 font-black text-slate-400 hover:text-slate-900 transition-all ${currentStep === 0 ? 'opacity-0 pointer-events-none' : ''}`}><ChevronLeft /> Previous</button>
+           <div className="flex items-center gap-10">
+              <span className="text-[10px] font-black text-slate-300 uppercase tracking-[0.2em]">Step 0{currentStep} of 03</span>
+              {currentStep < 3 && <button onClick={handleNext} className="btn-primary px-20 shadow-indigo-100">Continue <ChevronRight size={18} /></button>}
            </div>
         </footer>
       </main>
