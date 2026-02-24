@@ -254,7 +254,7 @@ export default function Navbar() {
                   className="tracking-tight leading-none"
                   style={{ fontFamily: "'Instrument Serif', Georgia, serif", fontSize: "1.2rem", color: "#0A1628", fontWeight: 700 }}
                 >
-                  Re - <em className="italic font-light">Commerce</em>
+                  Re- Commerce
                 </span>
                 <button
                   onClick={() => setMobileNavOpen(false)}
@@ -398,7 +398,7 @@ export default function Navbar() {
                   letterSpacing: "-0.025em",
                 }}
               >
-                Re<em className="italic font-light">commerce</em>
+                Re - Commerce
               </span>
             </Link>
 

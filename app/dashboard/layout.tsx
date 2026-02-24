@@ -242,7 +242,6 @@ export default function SellerDashboardLayout({ children }: { children: React.Re
           </div>
         </div>
       )}
-
       {/* Nav links */}
       <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
         <p
@@ -327,14 +326,14 @@ export default function SellerDashboardLayout({ children }: { children: React.Re
       {/* Bottom: quick links + sign out */}
       <div className="px-3 pb-5 flex-shrink-0 space-y-1" style={{ borderTop: "1px solid #E4E9F2", paddingTop: 12 }}>
         <Link
-          href="/"
+          href="\"
           className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150"
           style={{ color: "#9BA8C0", fontFamily: "'DM Sans', sans-serif" }}
           onMouseEnter={e => { e.currentTarget.style.background = "#F4F6FB"; e.currentTarget.style.color = "#0A1628"; }}
           onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#9BA8C0"; }}
         >
           <ArrowUpRight className="w-4 h-4" />
-          View your store
+          View Market
         </Link>
         <button
           onClick={() => signOut({ callbackUrl: "/" })}

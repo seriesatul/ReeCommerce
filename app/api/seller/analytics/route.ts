@@ -7,9 +7,19 @@ import Store from "@/models/Store";
 import Reel from "@/models/Reel";
 import mongoose from "mongoose";
 
-// ─── All possible values your checkout/verify might set ──────────
-// Common values: "completed" | "paid" | "success" | "PAID"
-const PAID_STATUSES = ["completed", "paid", "success", "PAID", "COMPLETED"];
+// ─── Paid order filter ────────────────────────────────────────────
+// Primary:  paymentStatus === "completed"  (Razorpay verify sets this)
+// Fallback: status is beyond pending/cancelled, covers cases where
+//           checkout sets status but forgets to set paymentStatus.
+const PAID_FILTER = {
+  $or: [
+    { paymentStatus: "completed" },
+    {
+      paymentStatus: { $ne: "failed" },
+      status: { $in: ["processing", "shipped", "delivered"] },
+    },
+  ],
+};
 
 export async function GET(request: Request) {
   try {
@@ -20,9 +30,9 @@ export async function GET(request: Request) {
 
     await connectDB();
     const store = await Store.findOne({ ownerId: session.user.id });
-    if (!store) return NextResponse.json({ error: "Store not found" }, { status: 404 });
+    if (!store)
+      return NextResponse.json({ error: "Store not found" }, { status: 404 });
 
-    // ─── Always cast to ObjectId — prevents type mismatch silently killing $match ──
     const storeId = new mongoose.Types.ObjectId(store._id.toString());
 
     // ─── Parse range ──────────────────────────────────────────────
@@ -30,24 +40,21 @@ export async function GET(request: Request) {
     const range = searchParams.get("range") ?? "30d";
     const days  = range === "7d" ? 7 : range === "90d" ? 90 : 30;
 
-    const now          = new Date();
-    const periodStart  = new Date(now);
+    const now         = new Date();
+    const periodStart = new Date(now);
     periodStart.setDate(now.getDate() - days);
-    const prevStart    = new Date(periodStart);
+    const prevStart   = new Date(periodStart);
     prevStart.setDate(periodStart.getDate() - days);
 
-    // ── DEBUG: log how many orders exist for this store at all ───
-    const totalOrderCount = await Order.countDocuments({ storeId });
-    const paidOrderCount  = await Order.countDocuments({
-      storeId,
-      paymentStatus: { $in: PAID_STATUSES },
-    });
-    console.log(`[analytics] storeId=${storeId} total_orders=${totalOrderCount} paid_orders=${paidOrderCount} range=${range}`);
+    // ─── Debug logging ────────────────────────────────────────────
+    const totalOrders = await Order.countDocuments({ storeId });
+    const paidOrders  = await Order.countDocuments({ storeId, ...PAID_FILTER });
+    console.log(`[analytics] storeId=${storeId} total=${totalOrders} paid=${paidOrders} range=${range}`);
 
-    // If seller has orders but none matched — log the actual paymentStatus values
-    if (totalOrderCount > 0 && paidOrderCount === 0) {
-      const sample = await Order.find({ storeId }).limit(3).select("paymentStatus totalAmount").lean();
-      console.warn("[analytics] paymentStatus values found in DB:", sample.map((o: any) => o.paymentStatus));
+    if (totalOrders > 0 && paidOrders === 0) {
+      const sample = await Order.find({ storeId })
+        .limit(3).select("paymentStatus status totalAmount").lean();
+      console.warn("[analytics] unpaid sample:", JSON.stringify(sample));
     }
 
     // ─── 1. Revenue over time (current period) ────────────────────
@@ -55,33 +62,32 @@ export async function GET(request: Request) {
       {
         $match: {
           storeId,
-          paymentStatus: { $in: PAID_STATUSES },
+          ...PAID_FILTER,
           createdAt: { $gte: periodStart, $lte: now },
         },
       },
       {
         $group: {
           _id:     { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
-          revenue: { $sum: { $toDouble: "$totalAmount" } },   // $toDouble guards against string amounts
+          revenue: { $sum: { $toDouble: "$totalAmount" } },
           orders:  { $sum: 1 },
         },
       },
       { $sort: { _id: 1 } },
     ]);
 
-    // ─── Map _id → human date label for chart XAxis ───────────────
     const revenueStats = revenueStatsRaw.map((d: any) => ({
       date:    new Date(d._id).toLocaleDateString("en-IN", { day: "2-digit", month: "short" }),
       revenue: Number(d.revenue) || 0,
       orders:  Number(d.orders)  || 0,
     }));
 
-    // ─── 2. Previous period totals for trend badges ───────────────
+    // ─── 2. Previous period totals ────────────────────────────────
     const prevAgg = await Order.aggregate([
       {
         $match: {
           storeId,
-          paymentStatus: { $in: PAID_STATUSES },
+          ...PAID_FILTER,
           createdAt: { $gte: prevStart, $lt: periodStart },
         },
       },
@@ -108,7 +114,6 @@ export async function GET(request: Request) {
     ]);
     const engagement = engAgg[0] ?? { totalViews: 0, totalLikes: 0 };
 
-    // Prev views proxy (reels created before period as a snapshot estimate)
     const prevReelsAgg = await Reel.aggregate([
       { $match: { storeId, createdAt: { $lt: periodStart } } },
       { $group: { _id: null, totalViews: { $sum: { $ifNull: ["$viewsCount", 0] } } } },
@@ -116,21 +121,25 @@ export async function GET(request: Request) {
 
     // ─── 4. Top products by revenue ───────────────────────────────
     const topProducts = await Order.aggregate([
-      { $match: { storeId, paymentStatus: { $in: PAID_STATUSES } } },
+      { $match: { storeId, ...PAID_FILTER } },
       { $unwind: "$items" },
       {
         $group: {
           _id:          "$items.productId",
           name:         { $first: "$items.name" },
-          totalRevenue: { $sum: { $multiply: [{ $toDouble: "$items.priceAtPurchase" }, "$items.quantity"] } },
-          totalSold:    { $sum: "$items.quantity" },
+          totalRevenue: {
+            $sum: {
+              $multiply: [{ $toDouble: "$items.priceAtPurchase" }, "$items.quantity"],
+            },
+          },
+          totalSold: { $sum: "$items.quantity" },
         },
       },
       { $sort: { totalRevenue: -1 } },
       { $limit: 5 },
     ]);
 
-    // ─── 5. Top reels for dashboard table ─────────────────────────
+    // ─── 5. Top reels ─────────────────────────────────────────────
     const topReelsRaw = await Reel.find({ storeId })
       .sort({ viewsCount: -1 })
       .limit(5)
@@ -139,11 +148,11 @@ export async function GET(request: Request) {
 
     const topReels = topReelsRaw.map((r: any) => ({
       _id:          r._id,
-      title:        r.productId?.name ?? r.title ?? "Untitled",
+      title:        r.title || r.productId?.name || "Untitled",
       thumbnailUrl: r.thumbnailUrl ?? "",
       views:        Number(r.viewsCount) || 0,
       likes:        Number(r.likesCount) || 0,
-      revenue:      0,   // TODO: enrich from Order aggregate if needed
+      revenue:      0,
       convRate:     0,
       createdAt:    r.createdAt,
     }));
@@ -159,15 +168,9 @@ export async function GET(request: Request) {
       prevRevenue: Number(prev.revenue) || 0,
       prevOrders:  Number(prev.orders)  || 0,
       prevViews:   Number(prevReelsAgg[0]?.totalViews) || 0,
-      // Debug info — remove after confirming data flows correctly
-      _debug: {
-        totalOrderCount,
-        paidOrderCount,
-        storeId: storeId.toString(),
-        range,
-        periodStart,
-      },
+      _debug: { totalOrders, paidOrders, storeId: storeId.toString(), range },
     });
+
   } catch (error: any) {
     console.error("[analytics] ERROR:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });

@@ -190,7 +190,7 @@ function ActionsMenu({ reel, onEdit, onDelete, onToggle }: {
   const items = [
     { icon: Edit2, label: "Edit details", action: () => { setOpen(false); onEdit(); } },
     { icon: reel.isPublished ? EyeOff : Globe, label: reel.isPublished ? "Unpublish" : "Publish", action: () => { setOpen(false); onToggle(); } },
-    { icon: ExternalLink, label: "View live", action: () => { setOpen(false); window.open(`/reels/${reel._id}`, "_blank"); } },
+    { icon: ExternalLink, label: "View live", action: () => { setOpen(false); window.open(`/?reelId=${reel._id}`, "_blank"); } },
     { icon: Trash2, label: "Delete", danger: true, action: () => { setOpen(false); onDelete(); } },
   ];
   return (
@@ -231,15 +231,16 @@ export default function ReelsStudio() {
   const [editR,   setEditR]   = useState<Reel | null>(null);
   const [delR,    setDelR]    = useState<Reel | null>(null);
 
-  const fetchReels = useCallback(async (silent = false) => {
-    if (!silent) setLoading(true); else setRefresh(true);
-    try {
-      const res  = await fetch("/api/seller/reels");
-      const data = await res.json();
-      if (Array.isArray(data)) setReels(data.map((r: any) => ({ ...r, isPublished: r.isPublished ?? true })));
-    } catch { toast.error("Failed to load reels"); }
-    finally { setLoading(false); setRefresh(false); }
-  }, []);
+ const fetchReels = useCallback(async (silent = false) => {
+  if (!silent) setLoading(true); else setRefresh(true);
+  try {
+    const res  = await fetch("/api/seller/reels");
+    const data = await res.json();
+    const list = Array.isArray(data) ? data : (data.reels ?? []);
+    setReels(list.map((r: any) => ({ ...r, isPublished: r.isPublished ?? true })));
+  } catch { toast.error("Failed to load reels"); }
+  finally { setLoading(false); setRefresh(false); }
+}, []);
 
   useEffect(() => { fetchReels(); }, [fetchReels]);
 
