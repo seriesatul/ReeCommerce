@@ -1,112 +1,104 @@
 "use client";
 
-import { CheckCircle2, Store, ShieldCheck, Landmark, Edit3 } from "lucide-react";
+import { Store, ShieldCheck, Landmark, Edit3, Check, AtSign, AlignLeft, User, CreditCard, Hash, Zap } from "lucide-react";
+import { motion } from "framer-motion";
 
-interface Step4Props {
-  formData: any;
-  setCurrentStep: (step: number) => void;
+const N = "#0A1628"; const M = "#9BA8C0"; const B = "1px solid #E4E9F2"; const S = "#F7F8FC";
+
+interface Step4Props { formData: any; setCurrentStep: (step: number) => void; }
+
+function mask(str: string, visible = 4): string {
+  if (!str) return "—";
+  if (str.length <= visible) return str;
+  return "•".repeat(str.length - visible) + str.slice(-visible);
+}
+
+function SectionCard({ icon: Icon, label, step, onEdit, delay, children }: {
+  icon: React.ElementType; label: string; step: number; onEdit: () => void; delay: number; children: React.ReactNode;
+}) {
+  return (
+    <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay, duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+      style={{ background: "white", border: B, borderRadius: 16, overflow: "hidden", boxShadow: "0 2px 8px rgba(10,22,40,0.04)" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "13px 16px", background: S, borderBottom: B }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ width: 26, height: 26, borderRadius: 7, background: N, display: "flex", alignItems: "center", justifyContent: "center" }}><Icon size={12} color="white" /></div>
+          <span style={{ fontSize: 9, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.14em", color: N, fontFamily: "DM Sans, sans-serif" }}>{label}</span>
+        </div>
+        <button type="button" onClick={onEdit}
+          style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 10px", borderRadius: 8, border: B, background: "white", cursor: "pointer", fontSize: 10, fontWeight: 700, color: "#6B7A99", transition: "all .15s", fontFamily: "DM Sans, sans-serif" }}
+          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = N; (e.currentTarget as HTMLElement).style.color = "white"; (e.currentTarget as HTMLElement).style.borderColor = N; }}
+          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "white"; (e.currentTarget as HTMLElement).style.color = "#6B7A99"; (e.currentTarget as HTMLElement).style.borderColor = "#E4E9F2"; }}>
+          <Edit3 size={10} /> Edit
+        </button>
+      </div>
+      <div style={{ padding: "16px" }}>{children}</div>
+    </motion.div>
+  );
+}
+
+function Field({ icon: Icon, label, value, mono = false, fullWidth = false }: {
+  icon?: React.ElementType; label: string; value: string; mono?: boolean; fullWidth?: boolean;
+}) {
+  return (
+    <div style={{ gridColumn: fullWidth ? "1 / -1" : undefined }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 4 }}>
+        {Icon && <Icon size={9} color={M} />}
+        <span style={{ fontSize: 9, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.12em", color: M, fontFamily: "DM Sans, sans-serif" }}>{label}</span>
+      </div>
+      <p style={{ fontSize: 13, fontWeight: 700, color: value === "—" ? "#C4CDD8" : N, margin: 0, lineHeight: 1.45, fontFamily: mono ? "DM Mono, monospace" : "DM Sans, sans-serif", letterSpacing: mono ? "0.06em" : undefined, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: fullWidth ? "normal" : "nowrap", display: fullWidth ? "-webkit-box" : undefined, WebkitLineClamp: fullWidth ? 2 : undefined, WebkitBoxOrient: fullWidth ? "vertical" : undefined }}>
+        {value || "—"}
+      </p>
+    </div>
+  );
 }
 
 export default function Step4_Review({ formData, setCurrentStep }: Step4Props) {
-  // Utility to mask sensitive strings (e.g., PAN and Bank Account)
-  const maskString = (str: string, visibleChars: number = 4) => {
-    if (!str) return "N/A";
-    return "*".repeat(str.length - visibleChars) + str.slice(-visibleChars);
-  };
+  const allFilled = formData.shopName && formData.shopHandle && formData.legalName && formData.panNumber && formData.accountHolderName && formData.accountNumber && formData.ifscCode;
 
   return (
-    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="text-center space-y-2 mb-8">
-        <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-emerald-50 text-emerald-600 mb-2">
-          <CheckCircle2 className="w-6 h-6" />
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+      style={{ display: "flex", flexDirection: "column", gap: 14, fontFamily: "DM Sans, sans-serif" }}>
+
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", background: allFilled ? "#F0FDF4" : S, border: `1px solid ${allFilled ? "#BBF7D0" : "#E4E9F2"}`, borderRadius: 14 }}>
+        <div style={{ width: 40, height: 40, borderRadius: 11, background: allFilled ? "#059669" : N, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, boxShadow: allFilled ? "0 4px 16px rgba(5,150,105,0.24)" : "0 4px 16px rgba(10,22,40,0.14)" }}>
+          {allFilled ? <Check size={18} color="white" strokeWidth={2.8} /> : <Zap size={18} color="white" />}
         </div>
-        <h2 className="text-xl font-bold text-slate-900">Review your details</h2>
-        <p className="text-sm text-slate-500">
-          Almost there! Please double-check your info before launching your shop.
-        </p>
+        <div>
+          <p style={{ fontSize: 13, fontWeight: 800, color: allFilled ? "#059669" : N, margin: "0 0 2px" }}>{allFilled ? "Everything looks good!" : "Review your details"}</p>
+          <p style={{ fontSize: 11, color: allFilled ? "#059669" : M, margin: 0, opacity: allFilled ? 0.75 : 1 }}>{allFilled ? "All sections complete — click Finish to launch your store." : "Double-check before submitting."}</p>
+        </div>
       </div>
 
-      <div className="space-y-4">
-        {/* Section 1: Shop Profile */}
-        <div className="border border-slate-100 rounded-2xl p-5 relative group">
-          <button 
-            onClick={() => setCurrentStep(1)}
-            className="absolute top-4 right-4 text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity"
-          >
-            <Edit3 className="w-4 h-4" />
-          </button>
-          <div className="flex items-center gap-2 mb-3 text-indigo-600 font-bold text-xs uppercase tracking-widest">
-            <Store className="w-4 h-4" />
-            Shop Identity
-          </div>
-          <div className="grid grid-cols-2 gap-y-4">
-            <div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase">Shop Name</p>
-              <p className="text-sm font-bold text-slate-900">{formData.shopName}</p>
-            </div>
-            <div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase">Handle</p>
-              <p className="text-sm font-bold text-slate-900">@{formData.shopHandle}</p>
-            </div>
-            <div className="col-span-2">
-              <p className="text-[10px] font-bold text-slate-400 uppercase">Bio</p>
-              <p className="text-sm text-slate-600 line-clamp-2">{formData.shopDescription}</p>
-            </div>
-          </div>
+      <SectionCard icon={Store} label="Shop Identity" step={1} onEdit={() => setCurrentStep(1)} delay={0.06}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px 20px" }}>
+          <Field icon={Store}    label="Shop Name" value={formData.shopName} />
+          <Field icon={AtSign}   label="Handle"    value={formData.shopHandle ? `@${formData.shopHandle}` : "—"} />
+          <Field icon={AlignLeft} label="Bio"      value={formData.shopDescription} fullWidth />
         </div>
+      </SectionCard>
 
-        {/* Section 2: Verification */}
-        <div className="border border-slate-100 rounded-2xl p-5 relative group">
-          <button 
-            onClick={() => setCurrentStep(2)}
-            className="absolute top-4 right-4 text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity"
-          >
-            <Edit3 className="w-4 h-4" />
-          </button>
-          <div className="flex items-center gap-2 mb-3 text-indigo-600 font-bold text-xs uppercase tracking-widest">
-            <ShieldCheck className="w-4 h-4" />
-            Legal & Tax
-          </div>
-          <div className="grid grid-cols-2 gap-y-4">
-            <div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase">Entity Type</p>
-              <p className="text-sm font-bold capitalize text-slate-900">{formData.businessType}</p>
-            </div>
-            <div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase">Tax ID / PAN</p>
-              <p className="text-sm font-bold text-slate-900 font-mono tracking-tighter">
-                {maskString(formData.panNumber, 3)}
-              </p>
-            </div>
-          </div>
+      <SectionCard icon={ShieldCheck} label="Legal & KYC" step={2} onEdit={() => setCurrentStep(2)} delay={0.12}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px 20px" }}>
+          <Field icon={User}       label="Entity Type" value={formData.businessType === "individual" ? "Individual" : "Business"} />
+          <Field icon={AlignLeft}  label="Legal Name"  value={formData.legalName} />
+          <Field icon={CreditCard} label="PAN Number"  value={mask(formData.panNumber, 3)} mono />
         </div>
+      </SectionCard>
 
-        {/* Section 3: Payouts */}
-        <div className="border border-slate-100 rounded-2xl p-5 relative group">
-          <button 
-            onClick={() => setCurrentStep(3)}
-            className="absolute top-4 right-4 text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity"
-          >
-            <Edit3 className="w-4 h-4" />
-          </button>
-          <div className="flex items-center gap-2 mb-3 text-indigo-600 font-bold text-xs uppercase tracking-widest">
-            <Landmark className="w-4 h-4" />
-            Bank Details
-          </div>
-          <div className="grid grid-cols-2 gap-y-4">
-            <div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase">Holder Name</p>
-              <p className="text-sm font-bold text-slate-900">{formData.accountHolderName}</p>
-            </div>
-            <div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase">Account Number</p>
-              <p className="text-sm font-bold text-slate-900 font-mono tracking-tighter">
-                {maskString(formData.accountNumber, 4)}
-              </p>
-            </div>
-          </div>
+      <SectionCard icon={Landmark} label="Bank Details" step={3} onEdit={() => setCurrentStep(3)} delay={0.18}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px 20px" }}>
+          <Field icon={User}     label="Account Holder" value={formData.accountHolderName} />
+          <Field icon={Hash}     label="Account Number" value={mask(formData.accountNumber, 4)} mono />
+          <Field icon={Landmark} label="IFSC Code"      value={formData.ifscCode} mono />
         </div>
-      </div>
-    </div>
+      </SectionCard>
+
+      <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }}
+        style={{ fontSize: 10, color: M, textAlign: "center", lineHeight: 1.65, margin: 0 }}>
+        By submitting, you confirm all details are accurate and agree to the{" "}
+        <a href="/terms/seller" target="_blank" style={{ color: N, fontWeight: 700, textDecoration: "underline", textDecorationColor: "#E4E9F2" }}>Seller Terms of Service</a>.
+      </motion.p>
+    </motion.div>
   );
 }

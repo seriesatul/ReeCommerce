@@ -4,258 +4,427 @@ import { useState } from "react";
 import { useCart } from "@/context/CartContext";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { 
-  MapPin, Phone, User, Home, 
-  ArrowLeft, ShieldCheck, Loader2, CreditCard,
-  Banknote, CheckCircle2, Zap
-} from "lucide-react";
 import Image from "next/image";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  MapPin, Phone, User, Home, ArrowLeft,
+  ShieldCheck, Loader2, CreditCard, Banknote,
+  CheckCircle2, Zap, Package, Lock,
+  Truck, RotateCcw, ChevronRight, ShoppingBag,
+} from "lucide-react";
 
-const loadRazorpay = () => {
-  return new Promise((resolve) => {
-    const script = document.createElement("script");
-    script.src = "https://checkout.razorpay.com/v1/checkout.js";
-    script.onload = () => resolve(true);
-    script.onerror = () => resolve(false);
-    document.body.appendChild(script);
-  });
-};
+// ─── Tokens ──────────────────────────────────────────────────────
+const N = "#0A1628"; const M = "#9BA8C0"; const B = "1px solid #E4E9F2"; const S = "#F7F8FC";
 
+// ─── Razorpay loader ──────────────────────────────────────────────
+const loadRazorpay = () => new Promise<boolean>(resolve => {
+  if ((window as any).Razorpay) { resolve(true); return; }
+  const s = document.createElement("script");
+  s.src = "https://checkout.razorpay.com/v1/checkout.js";
+  s.onload  = () => resolve(true);
+  s.onerror = () => resolve(false);
+  document.body.appendChild(s);
+});
+
+// ─── Formatters ───────────────────────────────────────────────────
+const fmtRupee = (n: number) => `₹${n.toLocaleString("en-IN")}`;
+
+// ─── Field component ──────────────────────────────────────────────
+function Field({ icon: Icon, placeholder, value, onChange, required, type = "text", error }: {
+  icon: React.ElementType; placeholder: string; value: string;
+  onChange: (v: string) => void; required?: boolean; type?: string; error?: string;
+}) {
+  const [focused, setFocused] = useState(false);
+  return (
+    <div>
+      <div style={{ position: "relative" }}>
+        <Icon size={14} color={focused ? N : error ? "#DC2626" : M}
+          style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", pointerEvents: "none", transition: "color .15s" }} />
+        <input
+          type={type} required={required} placeholder={placeholder} value={value}
+          onChange={e => onChange(e.target.value)}
+          onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
+          style={{
+            width: "100%", padding: "13px 14px 13px 38px", borderRadius: 12, fontFamily: "DM Sans, sans-serif",
+            fontSize: 13, color: N, outline: "none", boxSizing: "border-box", transition: "all .15s",
+            background: focused ? "white" : error ? "#FFF1F2" : S,
+            border: focused ? `2px solid ${N}` : error ? "2px solid #DC2626" : `2px solid ${error ? "#FECDD3" : "#E4E9F2"}`,
+          }} />
+      </div>
+      {error && (
+        <p style={{ fontSize: 10, color: "#DC2626", fontWeight: 700, margin: "4px 0 0 4px" }}>{error}</p>
+      )}
+    </div>
+  );
+}
+
+// ─── Section card ─────────────────────────────────────────────────
+function SCard({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
+  return (
+    <div style={{ background: "white", border: B, borderRadius: 22, padding: "28px", boxShadow: "0 1px 4px rgba(10,22,40,0.04)", ...style }}>
+      {children}
+    </div>
+  );
+}
+
+// ─── Section header ───────────────────────────────────────────────
+function SHeader({ step, icon: Icon, title }: { step: number; icon: React.ElementType; title: string }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 22 }}>
+      <div style={{ width: 36, height: 36, borderRadius: 10, background: N, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+        <Icon size={16} color="white" />
+      </div>
+      <div>
+        <p style={{ fontSize: 8, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.14em", color: M, margin: 0 }}>Step {step}</p>
+        <h2 style={{ fontFamily: "Instrument Serif, serif", fontSize: 20, color: N, margin: 0, letterSpacing: "-0.02em" }}>{title}</h2>
+      </div>
+    </div>
+  );
+}
+
+// ─── Payment option ───────────────────────────────────────────────
+function PayOption({ id, icon: Icon, title, sub, selected, onClick }: {
+  id: string; icon: React.ElementType; title: string; sub: string;
+  selected: boolean; onClick: () => void;
+}) {
+  return (
+    <button type="button" onClick={onClick}
+      style={{ position: "relative", display: "flex", alignItems: "center", gap: 14, padding: "16px 18px", borderRadius: 16,
+        border: selected ? `2px solid ${N}` : "2px solid #E4E9F2",
+        background: selected ? "#F0F2F7" : S,
+        cursor: "pointer", textAlign: "left", width: "100%", transition: "all .18s",
+        boxShadow: selected ? "0 4px 16px rgba(10,22,40,0.1)" : "none" }}>
+      <div style={{ width: 40, height: 40, borderRadius: 11, background: selected ? N : "#E4E9F2", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "background .18s" }}>
+        <Icon size={18} color={selected ? "white" : M} />
+      </div>
+      <div style={{ flex: 1 }}>
+        <p style={{ fontSize: 14, fontWeight: 800, color: N, margin: 0, fontFamily: "DM Sans, sans-serif" }}>{title}</p>
+        <p style={{ fontSize: 9, fontWeight: 700, color: M, margin: "2px 0 0", textTransform: "uppercase", letterSpacing: "0.1em" }}>{sub}</p>
+      </div>
+      <AnimatePresence>
+        {selected && (
+          <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }}
+            transition={{ type: "spring", stiffness: 400, damping: 20 }}>
+            <CheckCircle2 size={18} color="#059669" />
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </button>
+  );
+}
+
+// ─── Trust badge ──────────────────────────────────────────────────
+const TrustBadge = ({ icon: Icon, label }: { icon: React.ElementType; label: string }) => (
+  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+    <Icon size={12} color="rgba(255,255,255,0.35)" />
+    <span style={{ fontSize: 9, fontWeight: 700, color: "rgba(255,255,255,0.35)", textTransform: "uppercase", letterSpacing: "0.1em" }}>{label}</span>
+  </div>
+);
+
+// ═══════════════════════════════════════════════════════════════════
+// MAIN PAGE
+// ═══════════════════════════════════════════════════════════════════
 export default function CheckoutPage() {
   const { items, cartTotal, shippingAddress, setShippingAddress, clearCart } = useCart();
   const { data: session } = useSession();
   const router = useRouter();
 
-  const [loading, setLoading] = useState(false);
+  const [loading,       setLoading]       = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<"online" | "cod">("online");
-  const [address, setAddress] = useState(shippingAddress || {
-    fullName: "",
-    phone: "",
-    street: "",
-    city: "",
-    state: "",
-    zipCode: ""
+  const [errors,        setErrors]        = useState<Record<string, string>>({});
+  const [address,       setAddress]       = useState(shippingAddress || {
+    fullName: "", phone: "", street: "", city: "", state: "", zipCode: "",
   });
 
+  // ── Empty cart guard ──────────────────────────────────────────
+  if (!items || items.length === 0) {
+    return (
+      <div style={{ minHeight: "80vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: S, fontFamily: "DM Sans, sans-serif", padding: 24, textAlign: "center" }}>
+        <div style={{ width: 72, height: 72, borderRadius: 20, background: "white", border: B, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 20, boxShadow: "0 4px 16px rgba(10,22,40,0.07)" }}>
+          <ShoppingBag size={28} color={M} />
+        </div>
+        <h2 style={{ fontFamily: "Instrument Serif, serif", fontSize: 26, color: N, margin: "0 0 8px", letterSpacing: "-0.02em" }}>Your bag is empty</h2>
+        <p style={{ fontSize: 14, color: M, margin: "0 0 24px" }}>Add some items before checking out.</p>
+        <button onClick={() => router.push("/")}
+          style={{ display: "flex", alignItems: "center", gap: 8, padding: "13px 24px", borderRadius: 14, background: N, color: "white", border: "none", fontWeight: 800, cursor: "pointer", fontSize: 14, fontFamily: "DM Sans, sans-serif", boxShadow: "0 6px 20px rgba(10,22,40,0.2)" }}>
+          <ShoppingBag size={15} /> Browse Products
+        </button>
+      </div>
+    );
+  }
+
+  // ── Validation ────────────────────────────────────────────────
+  const validate = () => {
+    const e: Record<string, string> = {};
+    if (!address.fullName.trim())                     e.fullName = "Full name is required";
+    if (!/^[6-9]\d{9}$/.test(address.phone.trim()))  e.phone    = "Enter a valid 10-digit mobile number";
+    if (!address.street.trim())                       e.street   = "Address is required";
+    if (!address.city.trim())                         e.city     = "City is required";
+    if (!address.state.trim())                        e.state    = "State is required";
+    if (!/^\d{6}$/.test(address.zipCode.trim()))      e.zipCode  = "Enter a valid 6-digit pincode";
+    setErrors(e);
+    return Object.keys(e).length === 0;
+  };
+
+  // ── Checkout handler ──────────────────────────────────────────
   const handleProcessOrder = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!validate()) return;
     setLoading(true);
-
-    // 1. Save current address to context/localStorage
     setShippingAddress(address);
 
     try {
       if (paymentMethod === "cod") {
-        // --- CASH ON DELIVERY FLOW ---
-        const res = await fetch("/api/checkout/cod", {
+        const res  = await fetch("/api/checkout/cod", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ address }),
         });
-
-        if (res.ok) {
-          clearCart();
-          router.push("/checkout/success?method=cod");
-        } else {
-          const data = await res.json();
-          throw new Error(data.error || "COD Order failed");
-        }
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "COD order failed");
+        clearCart();
+        router.push(`/checkout/success?method=cod${data.orderId ? `&orderId=${data.orderId}` : ""}`);
       } else {
-        // --- ONLINE PAYMENT FLOW (RAZORPAY) ---
         const sdkLoaded = await loadRazorpay();
-        if (!sdkLoaded) throw new Error("Razorpay failed to load");
+        if (!sdkLoaded) throw new Error("Razorpay failed to load. Check your connection.");
 
-        // A. Create Order on Server
-        const orderRes = await fetch("/api/checkout/create", { method: "POST" });
+        const orderRes  = await fetch("/api/checkout/create", { method: "POST" });
         const orderData = await orderRes.json();
         if (!orderRes.ok) throw new Error(orderData.error);
 
-        // B. Configure Razorpay
         const options = {
-          key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
-          amount: orderData.amount,
-          currency: orderData.currency,
-          name: "ReeCommerce",
+          key:         process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+          amount:      orderData.amount,
+          currency:    orderData.currency,
+          name:        "ReeCommerce",
           description: "Order Payment",
-          order_id: orderData.id,
-          handler: async function (response: any) {
+          order_id:    orderData.id,
+          handler: async (response: any) => {
             const verifyRes = await fetch("/api/checkout/verify", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                ...response,
-                address 
-              }),
+              body: JSON.stringify({ ...response, address }),
             });
-
-            if (verifyRes.ok) {
-              clearCart();
-              router.push("/checkout/success?method=online");
-            }
+            const verifyData = await verifyRes.json();
+            if (!verifyRes.ok) throw new Error(verifyData.error || "Payment verification failed");
+            clearCart();
+            router.push(`/checkout/success?method=online${verifyData.orderId ? `&orderId=${verifyData.orderId}` : ""}`);
           },
           prefill: {
-            name: address.fullName,
+            name:    address.fullName,
             contact: address.phone,
-            email: session?.user?.email
+            email:   session?.user?.email,
           },
-          theme: { color: "#4f46e5" }
+          theme: { color: N }, // ← navy instead of indigo
         };
 
         const rzp = new (window as any).Razorpay(options);
+        rzp.on("payment.failed", (response: any) => {
+          throw new Error(response.error?.description || "Payment failed");
+        });
         rzp.open();
       }
     } catch (err: any) {
-      console.error(err);
       alert(err.message || "Checkout failed. Please try again.");
     } finally {
       setLoading(false);
     }
   };
 
+  const shippingFee = 0;
+  const grandTotal  = cartTotal + shippingFee;
+
   return (
-    <div className="min-h-screen bg-slate-50 pb-20">
-      <div className="max-w-7xl mx-auto px-4 py-10">
-        
-        <button onClick={() => router.back()} className="flex items-center gap-2 text-slate-500 font-bold mb-8 hover:text-slate-900 transition-colors">
-          <ArrowLeft size={18} /> Back to Bag
-        </button>
+    <>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:opsz,wght@9..40,400;9..40,600;9..40,700;9..40,800;9..40,900&display=swap');
+        *{box-sizing:border-box;} body{font-family:'DM Sans',sans-serif;margin:0;}
+        @keyframes spin{to{transform:rotate(360deg)}}
+      `}</style>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">
-          
-          <div className="space-y-8">
-            {/* 1. SHIPPING FORM */}
-            <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-8">
-              <div className="flex items-center gap-3">
-                <div className="p-3 bg-indigo-50 rounded-2xl text-indigo-600"><MapPin /></div>
-                <h2 className="text-2xl font-black text-slate-900 tracking-tight">1. Delivery Address</h2>
-              </div>
+      <div style={{ minHeight: "100vh", background: S, paddingBottom: 80, fontFamily: "DM Sans, sans-serif" }}>
+        <div style={{ maxWidth: 1200, margin: "0 auto", padding: "32px 20px 0" }}>
 
-              <div className="grid grid-cols-1 gap-4">
-                <div className="relative">
-                  <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                  <input required className="input-field pl-11" placeholder="Full Name" value={address.fullName} onChange={e => setAddress({...address, fullName: e.target.value})} />
-                </div>
-                <div className="relative">
-                  <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                  <input required className="input-field pl-11" placeholder="Phone Number" value={address.phone} onChange={e => setAddress({...address, phone: e.target.value})} />
-                </div>
-                <div className="relative">
-                  <Home className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                  <input required className="input-field pl-11" placeholder="Flat / Street / Area" value={address.street} onChange={e => setAddress({...address, street: e.target.value})} />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <input required className="input-field" placeholder="City" value={address.city} onChange={e => setAddress({...address, city: e.target.value})} />
-                  <input required className="input-field" placeholder="State" value={address.state} onChange={e => setAddress({...address, state: e.target.value})} />
-                </div>
-                <input required className="input-field" placeholder="Pincode" value={address.zipCode} onChange={e => setAddress({...address, zipCode: e.target.value})} />
-              </div>
-            </div>
+          {/* ── Back button ──────────────────────────────────── */}
+          <button onClick={() => router.back()}
+            style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 28, background: "none", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 700, color: M, fontFamily: "DM Sans, sans-serif", padding: 0, transition: "color .15s" }}
+            onMouseEnter={e => ((e.currentTarget as HTMLElement).style.color = N)}
+            onMouseLeave={e => ((e.currentTarget as HTMLElement).style.color = M)}>
+            <ArrowLeft size={16} /> Back to Bag
+          </button>
 
-            {/* 2. PAYMENT METHOD SELECTOR */}
-            <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-8">
-               <div className="flex items-center gap-3">
-                  <div className="p-3 bg-indigo-50 rounded-2xl text-indigo-600"><CreditCard /></div>
-                  <h2 className="text-2xl font-black text-slate-900 tracking-tight">2. Payment Method</h2>
-               </div>
-
-               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {/* Online Option */}
-                  <button 
-                    type="button"
-                    onClick={() => setPaymentMethod("online")}
-                    className={`relative flex items-start gap-4 p-6 rounded-3xl border-2 transition-all text-left ${paymentMethod === 'online' ? 'border-indigo-600 bg-indigo-50/30' : 'border-slate-100 hover:border-slate-200'}`}
-                  >
-                    <div className={`p-2 rounded-xl ${paymentMethod === 'online' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-400'}`}>
-                      <Zap size={20} />
-                    </div>
-                    <div>
-                      <p className="font-bold text-slate-900">Pay Online</p>
-                      <p className="text-[10px] text-slate-500 font-medium mt-1 uppercase tracking-widest">UPI, Cards, Wallet</p>
-                    </div>
-                    {paymentMethod === 'online' && <CheckCircle2 className="absolute top-4 right-4 text-indigo-600" size={18} />}
-                  </button>
-
-                  {/* COD Option */}
-                  <button 
-                    type="button"
-                    onClick={() => setPaymentMethod("cod")}
-                    className={`relative flex items-start gap-4 p-6 rounded-3xl border-2 transition-all text-left ${paymentMethod === 'cod' ? 'border-indigo-600 bg-indigo-50/30' : 'border-slate-100 hover:border-slate-200'}`}
-                  >
-                    <div className={`p-2 rounded-xl ${paymentMethod === 'cod' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-400'}`}>
-                      <Banknote size={20} />
-                    </div>
-                    <div>
-                      <p className="font-bold text-slate-900">Cash on Delivery</p>
-                      <p className="text-[10px] text-slate-500 font-medium mt-1 uppercase tracking-widest">Pay at your doorstep</p>
-                    </div>
-                    {paymentMethod === 'cod' && <CheckCircle2 className="absolute top-4 right-4 text-indigo-600" size={18} />}
-                  </button>
-               </div>
-            </div>
+          {/* ── Page title ───────────────────────────────────── */}
+          <div style={{ marginBottom: 28 }}>
+            <h1 style={{ fontFamily: "Instrument Serif, serif", fontSize: 32, color: N, margin: 0, letterSpacing: "-0.025em" }}>Checkout</h1>
+            <p style={{ fontSize: 12, color: M, margin: "4px 0 0" }}>{items.length} item{items.length !== 1 ? "s" : ""} · {fmtRupee(cartTotal)} total</p>
           </div>
 
-          {/* 3. ORDER SUMMARY & TOTAL */}
-          <div className="space-y-6 lg:sticky lg:top-24">
-            <div className="bg-slate-900 text-white p-10 rounded-[3rem] shadow-2xl shadow-indigo-200 space-y-6">
-               <h3 className="text-sm font-black uppercase tracking-[0.2em] text-slate-400">Order Totals</h3>
-               
-               <div className="space-y-4 border-b border-white/10 pb-6">
-                  <div className="flex justify-between text-slate-400 font-bold text-xs uppercase tracking-widest">
-                    <span>Subtotal</span>
-                    <span>₹{cartTotal}</span>
+          <form onSubmit={handleProcessOrder}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 24 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,380px)", gap: 24, alignItems: "start" }}>
+
+                {/* ── Left column ──────────────────────────── */}
+                <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+
+                  {/* 1. Delivery address */}
+                  <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, ease: [0.16,1,0.3,1] }}>
+                    <SCard>
+                      <SHeader step={1} icon={MapPin} title="Delivery Address" />
+                      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                        <Field icon={User}  placeholder="Full Name"          value={address.fullName} onChange={v => setAddress({ ...address, fullName: v })} required error={errors.fullName} />
+                        <Field icon={Phone} placeholder="Mobile Number"      value={address.phone}    onChange={v => setAddress({ ...address, phone: v })}    required type="tel" error={errors.phone} />
+                        <Field icon={Home}  placeholder="Flat / Street / Area" value={address.street} onChange={v => setAddress({ ...address, street: v })}   required error={errors.street} />
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                          <Field icon={MapPin} placeholder="City"  value={address.city}    onChange={v => setAddress({ ...address, city: v })}    required error={errors.city} />
+                          <Field icon={MapPin} placeholder="State" value={address.state}   onChange={v => setAddress({ ...address, state: v })}   required error={errors.state} />
+                        </div>
+                        <Field icon={MapPin} placeholder="Pincode (6 digits)" value={address.zipCode} onChange={v => setAddress({ ...address, zipCode: v })} required error={errors.zipCode} />
+                      </div>
+                    </SCard>
+                  </motion.div>
+
+                  {/* 2. Payment method */}
+                  <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08, duration: 0.35, ease: [0.16,1,0.3,1] }}>
+                    <SCard>
+                      <SHeader step={2} icon={CreditCard} title="Payment Method" />
+                      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                        <PayOption id="online" icon={Zap}     title="Pay Online"        sub="UPI · Cards · Wallets · Net Banking" selected={paymentMethod === "online"} onClick={() => setPaymentMethod("online")} />
+                        <PayOption id="cod"    icon={Banknote} title="Cash on Delivery" sub="Pay at your doorstep"               selected={paymentMethod === "cod"}    onClick={() => setPaymentMethod("cod")}    />
+                      </div>
+
+                      <AnimatePresence>
+                        {paymentMethod === "online" && (
+                          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}
+                            transition={{ duration: 0.22 }}
+                            style={{ overflow: "hidden", marginTop: 14 }}>
+                            <div style={{ padding: "12px 14px", borderRadius: 12, background: "#F0FDF4", border: "1px solid #BBF7D0", display: "flex", alignItems: "center", gap: 8 }}>
+                              <Lock size={12} color="#059669" />
+                              <span style={{ fontSize: 11, fontWeight: 600, color: "#059669" }}>Secured by Razorpay — 256-bit SSL encryption</span>
+                            </div>
+                          </motion.div>
+                        )}
+                        {paymentMethod === "cod" && (
+                          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}
+                            transition={{ duration: 0.22 }}
+                            style={{ overflow: "hidden", marginTop: 14 }}>
+                            <div style={{ padding: "12px 14px", borderRadius: 12, background: "#FFFBEB", border: "1px solid #FDE68A", display: "flex", alignItems: "center", gap: 8 }}>
+                              <Banknote size={12} color="#D97706" />
+                              <span style={{ fontSize: 11, fontWeight: 600, color: "#D97706" }}>Keep exact change ready at time of delivery</span>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </SCard>
+                  </motion.div>
+                </div>
+
+                {/* ── Right column: order summary ───────────── */}
+                <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.14, duration: 0.35, ease: [0.16,1,0.3,1] }}
+                  style={{ position: "sticky", top: 90, display: "flex", flexDirection: "column", gap: 14 }}>
+
+                  {/* Order total card (navy) */}
+                  <div style={{ background: N, borderRadius: 22, padding: "28px 26px", boxShadow: "0 16px 48px rgba(10,22,40,0.22)", position: "relative", overflow: "hidden" }}>
+                    {/* Dot grid */}
+                    <div style={{ position: "absolute", inset: 0, opacity: 0.04, backgroundImage: "radial-gradient(circle,white 1px,transparent 1px)", backgroundSize: "16px 16px", pointerEvents: "none" }} />
+
+                    <p style={{ fontSize: 9, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.16em", color: "rgba(255,255,255,0.35)", margin: "0 0 20px", position: "relative" }}>Order Summary</p>
+
+                    {/* Line items */}
+                    <div style={{ display: "flex", flexDirection: "column", gap: 12, borderBottom: "1px solid rgba(255,255,255,0.08)", paddingBottom: 18, marginBottom: 18, position: "relative" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <span style={{ fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,0.5)" }}>Subtotal ({items.length} items)</span>
+                        <span style={{ fontSize: 14, fontWeight: 800, color: "white" }}>{fmtRupee(cartTotal)}</span>
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <span style={{ fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,0.5)" }}>Delivery</span>
+                        <span style={{ fontSize: 13, fontWeight: 800, color: "#4ADE80" }}>FREE</span>
+                      </div>
+                      <AnimatePresence>
+                        {paymentMethod === "cod" && (
+                          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}
+                            style={{ display: "flex", justifyContent: "space-between", alignItems: "center", overflow: "hidden" }}>
+                            <span style={{ fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,0.5)" }}>COD Fee</span>
+                            <span style={{ fontSize: 13, fontWeight: 800, color: "#4ADE80" }}>FREE</span>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+
+                    {/* Grand total */}
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 22, position: "relative" }}>
+                      <span style={{ fontSize: 14, fontWeight: 700, color: "rgba(255,255,255,0.7)" }}>Payable Amount</span>
+                      <span style={{ fontFamily: "Instrument Serif, serif", fontSize: 32, color: "white", letterSpacing: "-0.02em" }}>{fmtRupee(grandTotal)}</span>
+                    </div>
+
+                    {/* CTA */}
+                    <button type="submit" disabled={loading}
+                      style={{ width: "100%", padding: "16px", borderRadius: 16, background: loading ? "rgba(255,255,255,0.12)" : "white", border: "none", color: loading ? "rgba(255,255,255,0.4)" : N, fontSize: 15, fontWeight: 900, cursor: loading ? "not-allowed" : "pointer", fontFamily: "DM Sans, sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: 10, transition: "all .18s", boxShadow: loading ? "none" : "0 4px 16px rgba(255,255,255,0.15)", position: "relative" }}
+                      onMouseEnter={e => { if (!loading) (e.currentTarget.style.transform = "translateY(-1px)"); }}
+                      onMouseLeave={e => { (e.currentTarget.style.transform = "translateY(0)"); }}>
+                      {loading
+                        ? <><Loader2 size={18} style={{ animation: "spin 1s linear infinite" }} /> Processing…</>
+                        : paymentMethod === "online"
+                        ? <><Lock size={15} /> Pay {fmtRupee(grandTotal)}</>
+                        : <><Package size={15} /> Place COD Order</>
+                      }
+                    </button>
+
+                    {/* Trust badges */}
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 18, marginTop: 18, position: "relative", flexWrap: "wrap" }}>
+                      <TrustBadge icon={ShieldCheck} label="Secure" />
+                      <TrustBadge icon={Truck}       label="Free Delivery" />
+                      <TrustBadge icon={RotateCcw}   label="Easy Returns" />
+                    </div>
                   </div>
-                  <div className="flex justify-between text-slate-400 font-bold text-xs uppercase tracking-widest">
-                    <span>Delivery</span>
-                    <span className="text-emerald-400">FREE</span>
+
+                  {/* Cart preview */}
+                  <SCard style={{ padding: "20px" }}>
+                    <p style={{ fontSize: 9, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.14em", color: M, margin: "0 0 14px" }}>
+                      {items.length} item{items.length !== 1 ? "s" : ""} in your bag
+                    </p>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                      {items.map((item: any) => (
+                        <div key={item.productId} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px", borderRadius: 14, background: S, border: B }}>
+                          <div style={{ position: "relative", width: 44, height: 44, borderRadius: 10, overflow: "hidden", background: "white", border: B, flexShrink: 0 }}>
+                            {item.imageUrl && (
+                              <Image src={item.imageUrl} alt={item.name} fill style={{ objectFit: "cover" }} />
+                            )}
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <p style={{ fontSize: 12, fontWeight: 700, color: N, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</p>
+                            <p style={{ fontSize: 10, color: M, margin: "2px 0 0" }}>
+                              {item.quantity} × {fmtRupee(item.price)}
+                            </p>
+                          </div>
+                          <p style={{ fontFamily: "Instrument Serif, serif", fontSize: 15, color: N, margin: 0, flexShrink: 0 }}>
+                            {fmtRupee(item.price * item.quantity)}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </SCard>
+
+                  {/* Delivery promise */}
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                    {[
+                      { icon: Truck,      label: "Free delivery" },
+                      { icon: RotateCcw,  label: "7-day returns" },
+                      { icon: ShieldCheck,label: "Buyer protected" },
+                    ].map(({ icon: Icon, label }) => (
+                      <div key={label} style={{ flex: 1, minWidth: 100, display: "flex", alignItems: "center", gap: 7, padding: "10px 12px", borderRadius: 12, background: "white", border: B }}>
+                        <Icon size={13} color="#059669" />
+                        <span style={{ fontSize: 10, fontWeight: 700, color: "#6B7A99" }}>{label}</span>
+                      </div>
+                    ))}
                   </div>
-                  {paymentMethod === 'cod' && (
-                    <div className="flex justify-between text-slate-400 font-bold text-xs uppercase tracking-widest animate-in fade-in">
-                      <span>COD Convenience Fee</span>
-                      <span>₹0</span>
-                    </div>
-                  )}
-               </div>
 
-               <div className="flex justify-between items-center">
-                  <span className="text-xl font-bold">Payable Amount</span>
-                  <span className="text-4xl font-black text-indigo-400 tracking-tighter">₹{cartTotal}</span>
-               </div>
-
-               <button 
-                onClick={handleProcessOrder}
-                disabled={loading}
-                className="w-full bg-white text-slate-900 py-6 rounded-[2rem] font-black text-xl hover:bg-indigo-50 active:scale-[0.98] transition-all flex items-center justify-center gap-3 mt-4 disabled:opacity-50"
-              >
-                {loading ? <Loader2 className="animate-spin" /> : (
-                  paymentMethod === 'online' ? "Pay & Complete Order" : "Place COD Order"
-                )}
-              </button>
-
-               <div className="flex items-center justify-center gap-2 text-[10px] font-black text-slate-500 pt-4 uppercase tracking-[0.2em]">
-                 <ShieldCheck size={14} className="text-indigo-500" />
-                 100% Secure Transaction
-               </div>
+                </motion.div>
+              </div>
             </div>
-
-            {/* Item Previews */}
-            <div className="bg-white border border-slate-100 rounded-[2.5rem] p-6 space-y-4 shadow-sm">
-               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">Cart Preview</p>
-               {items.map((item) => (
-                 <div key={item.productId} className="flex gap-4 items-center bg-slate-50/50 p-2 rounded-2xl">
-                    <div className="relative w-12 h-12 rounded-xl overflow-hidden bg-white border shrink-0">
-                      <Image src={item.imageUrl} alt={item.name} fill className="object-cover" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-bold text-slate-900 truncate">{item.name}</p>
-                      <p className="text-[10px] font-bold text-indigo-600">{item.quantity} × ₹{item.price}</p>
-                    </div>
-                 </div>
-               ))}
-            </div>
-          </div>
-
+          </form>
         </div>
       </div>
-    </div>
+    </>
   );
 }
