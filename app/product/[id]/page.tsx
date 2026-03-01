@@ -17,7 +17,7 @@ import { motion, AnimatePresence } from "framer-motion";
 // ─── Types ────────────────────────────────────────────────────────
 interface PopulatedProduct extends Omit<IProduct, "storeId" | "images"> {
   storeId: { _id: string; name: string; handle?: string; logoUrl?: string };
-  images:  string[];   // re-declared as required to match IProduct exactly
+  images:  string[];
   stock:   number;
   mrp:     number;
 }
@@ -64,8 +64,8 @@ const Sk = ({ h = 16, r = 8, w = "100%" }: { h?: number; r?: number; w?: string 
 // PAGE
 // ═══════════════════════════════════════════════════════════════════
 export default function ProductDetailPage() {
-  const { id }       = useParams();
-  const router       = useRouter();
+  const { id }        = useParams();
+  const router        = useRouter();
   const { addToCart } = useCart();
 
   const [product,    setProduct]    = useState<PopulatedProduct | null>(null);
@@ -88,7 +88,7 @@ export default function ProductDetailPage() {
       .finally(() => setLoading(false));
   }, [id]);
 
-  // ── Add to cart with success state ───────────────────────────
+  // ── Add to cart ───────────────────────────────────────────────
   const handleAddToCart = useCallback(async () => {
     if (!product || cartState !== "idle") return;
     setCartState("adding");
@@ -182,24 +182,363 @@ export default function ProductDetailPage() {
         @keyframes shimmer { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
         @keyframes spin    { to{transform:rotate(360deg)} }
         @keyframes pulse   { 0%,100%{opacity:1} 50%{opacity:0.45} }
+
         .no-scrollbar::-webkit-scrollbar { display:none }
         .no-scrollbar { -ms-overflow-style:none; scrollbar-width:none }
-        * { box-sizing:border-box }
-        body { font-family:'DM Sans',sans-serif; margin:0; background:${S} }
+
+        *, *::before, *::after { box-sizing: border-box; }
+        html {
+          overflow-y: scroll;
+        }
+        body {
+          font-family: 'DM Sans', sans-serif;
+          margin: 0;
+          background: ${S};
+          max-width: 100vw;
+          overflow-x: clip;
+        }
+
+        /* ── Page ── */
+        .pdp-page {
+          min-height: 100vh;
+          background: ${S};
+          padding-bottom: 96px;
+          font-family: 'DM Sans', sans-serif;
+          width: 100%;
+          max-width: 100%;
+        }
+
+        /* ── Container ── */
+        .pdp-container {
+          max-width: 1180px;
+          margin: 0 auto;
+          padding: 24px 24px 0;
+          width: 100%;
+        }
+
+        /* ── Top bar ── */
+        .pdp-topbar {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 24px;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+
+        /* ── Breadcrumb ── */
+        .pdp-breadcrumb {
+          display: flex;
+          align-items: center;
+          gap: 5px;
+          font-size: 11px;
+          font-weight: 700;
+          color: ${M};
+          overflow: hidden;
+          flex: 1;
+          justify-content: center;
+          max-width: 400px;
+        }
+
+        /* ── 2-col grid ── */
+        .pdp-grid {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+          gap: 48px;
+          align-items: start;
+        }
+
+        /* ── Left (sticky gallery) ── */
+        .pdp-left {
+          position: sticky;
+          top: 88px;
+          display: flex;
+          flex-direction: column;
+          gap: 14px;
+          min-width: 0;
+        }
+
+        /* ── Main image ── */
+        .pdp-main-img-wrap {
+          position: relative;
+          width: 100%;
+          aspect-ratio: 1 / 1;
+          border-radius: 22px;
+          overflow: hidden;
+          background: white;
+          border: ${B};
+          box-shadow: 0 8px 40px rgba(10,22,40,0.08);
+        }
+
+        /* ── Thumbnails ── */
+        .pdp-thumbs {
+          display: flex;
+          gap: 10px;
+          overflow-x: auto;
+          padding-bottom: 6px;
+          padding-right: 2px;
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+        .pdp-thumbs::-webkit-scrollbar { display: none; }
+
+        .pdp-thumb-btn {
+          position: relative;
+          width: 72px;
+          height: 72px;
+          border-radius: 14px;
+          overflow: hidden;
+          flex-shrink: 0;
+          background: white;
+          cursor: pointer;
+          transition: all .2s;
+          border: 2px solid #E4E9F2;
+        }
+
+        /* ── Right column ── */
+        .pdp-right {
+          display: flex;
+          flex-direction: column;
+          gap: 20px;
+          min-width: 0;
+        }
+
+        /* ── Pills ── */
+        .pdp-pills {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
+
+        /* ── Title ── */
+        .pdp-title {
+          font-family: 'Instrument Serif', serif;
+          font-size: 38px;
+          color: ${N};
+          margin: 0;
+          letter-spacing: -0.025em;
+          line-height: 1.12;
+          word-break: break-word;
+        }
+
+        /* ── Price block ── */
+        .pdp-price-block {
+          padding: 18px 20px;
+          border-radius: 18px;
+          background: white;
+          border: ${B};
+          display: flex;
+          align-items: flex-end;
+          gap: 16px;
+          flex-wrap: wrap;
+        }
+        .pdp-price-val {
+          font-family: 'Instrument Serif', serif;
+          font-size: 42px;
+          color: ${N};
+          line-height: 1;
+          letter-spacing: -0.02em;
+        }
+
+        /* ── Description ── */
+        .pdp-desc-box {
+          padding: 18px 20px;
+          border-radius: 18px;
+          background: white;
+          border: ${B};
+        }
+
+        /* ── Qty row ── */
+        .pdp-qty-row {
+          display: flex;
+          align-items: center;
+          gap: 16px;
+          flex-wrap: wrap;
+        }
+
+        /* ── Tiles ── */
+        .pdp-tiles {
+          display: flex;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+
+        /* ── CTA row ── */
+        .pdp-cta-row {
+          display: flex;
+          gap: 12px;
+        }
+        .pdp-btn-bag {
+          flex: 1.2;
+          padding: 16px 18px;
+          border-radius: 16px;
+          cursor: pointer;
+          font-family: 'DM Sans', sans-serif;
+          font-size: 14px;
+          font-weight: 800;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          transition: all .22s;
+          min-width: 0;
+        }
+        .pdp-btn-buy {
+          flex: 1.5;
+          padding: 16px 18px;
+          border-radius: 16px;
+          border: none;
+          font-family: 'DM Sans', sans-serif;
+          font-size: 14px;
+          font-weight: 900;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          transition: box-shadow .2s;
+          min-width: 0;
+        }
+
+        /* ── Trust line ── */
+        .pdp-trust {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 7px;
+          padding: 10px;
+          border-radius: 12px;
+          background: white;
+          border: ${B};
+        }
+
+        /* ── Sticky bottom bar ── */
+        .pdp-mobile-bar {
+          position: fixed;
+          bottom: 0;
+          left: 0;
+          right: 0;
+          z-index: 60;
+          background: rgba(247,248,252,0.96);
+          backdrop-filter: blur(16px);
+          -webkit-backdrop-filter: blur(16px);
+          border-top: ${B};
+          padding: 10px 16px;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+
+        /* ═══════════════════════════════════════
+           TABLET  ≤ 860px — stack to 1 column
+        ═══════════════════════════════════════ */
+        @media (max-width: 860px) {
+          .pdp-grid {
+            grid-template-columns: 1fr;
+            gap: 20px;
+          }
+          .pdp-left {
+            position: relative;
+            top: 0;
+          }
+          .pdp-main-img-wrap {
+            border-radius: 16px;
+          }
+          .pdp-title      { font-size: 28px; }
+          .pdp-price-val  { font-size: 34px; }
+          .pdp-breadcrumb { display: none; }
+        }
+
+        /* ═══════════════════════════════════════
+           MOBILE  ≤ 600px
+        ═══════════════════════════════════════ */
+        @media (max-width: 600px) {
+          .pdp-container {
+            padding: 14px 14px 0;
+          }
+          .pdp-topbar {
+            margin-bottom: 14px;
+          }
+          .pdp-grid { gap: 16px; }
+
+          .pdp-main-img-wrap {
+            border-radius: 14px;
+            aspect-ratio: 4 / 3;
+          }
+
+          .pdp-thumb-btn {
+            width: 60px;
+            height: 60px;
+            border-radius: 11px;
+          }
+
+          .pdp-right { gap: 14px; }
+
+          .pdp-title     { font-size: 21px; }
+          .pdp-price-val { font-size: 27px; }
+
+          .pdp-price-block {
+            padding: 13px 15px;
+            border-radius: 14px;
+            gap: 10px;
+          }
+          .pdp-desc-box {
+            padding: 13px 15px;
+            border-radius: 14px;
+          }
+
+          .pdp-tiles { gap: 8px; }
+
+          /* stack CTA buttons vertically */
+          .pdp-cta-row {
+            flex-direction: column;
+            gap: 10px;
+          }
+          .pdp-btn-bag,
+          .pdp-btn-buy {
+            flex: unset;
+            width: 100%;
+            padding: 15px 18px;
+          }
+
+          .pdp-mobile-bar {
+            padding: 8px 12px;
+            gap: 8px;
+          }
+        }
+
+        /* ═══════════════════════════════════════
+           SMALL MOBILE  ≤ 390px
+        ═══════════════════════════════════════ */
+        @media (max-width: 390px) {
+          .pdp-container  { padding: 12px 12px 0; }
+          .pdp-title      { font-size: 18px; }
+          .pdp-price-val  { font-size: 23px; }
+          .pdp-thumb-btn  { width: 52px; height: 52px; }
+          .pdp-main-img-wrap { aspect-ratio: 1 / 0.88; }
+        }
+
+        /* ═══════════════════════════════════════
+           LARGE DESKTOP  ≥ 1200px
+        ═══════════════════════════════════════ */
+        @media (min-width: 1200px) {
+          .pdp-grid      { gap: 64px; }
+          .pdp-title     { font-size: 42px; }
+          .pdp-price-val { font-size: 46px; }
+        }
       `}</style>
 
-      <div style={{ minHeight: "100vh", background: S, paddingBottom: 88, fontFamily: "DM Sans, sans-serif" }}>
+      <div className="pdp-page">
+        <div className="pdp-container">
 
-        {/* ── Main grid ──────────────────────────────────────── */}
-        <div style={{ maxWidth: 1180, margin: "0 auto", padding: "24px 24px 0" }}>
-          {/* ── Inline top bar: back + breadcrumb + share ─── */}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24, flexWrap: "wrap", gap: 10 }}>
+          {/* ── Top bar ────────────────────────────────── */}
+          <div className="pdp-topbar">
             <button onClick={() => router.back()}
-              style={{ display: "flex", alignItems: "center", gap: 7, background: "none", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 700, color: N, fontFamily: "DM Sans, sans-serif", padding: 0 }}>
+              style={{ display: "flex", alignItems: "center", gap: 7, background: "none", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 700, color: N, fontFamily: "DM Sans, sans-serif", padding: 0, flexShrink: 0 }}>
               <ArrowLeft size={15} /> Back
             </button>
 
-            <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 700, color: M, overflow: "hidden", flex: 1, justifyContent: "center", maxWidth: 400 }}>
+            <div className="pdp-breadcrumb">
               <Link href="/" style={{ color: M, textDecoration: "none" }}>Home</Link>
               <ChevronRight size={10} />
               <span style={{ color: N, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{product.name}</span>
@@ -223,20 +562,19 @@ export default function ProductDetailPage() {
             </button>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)", gap: 48, alignItems: "start" }}>
+          {/* ── Grid ───────────────────────────────────── */}
+          <div className="pdp-grid">
 
-            {/* ── LEFT: Image gallery ─────────────────────────── */}
-            <div style={{ position: "sticky", top: 88, display: "flex", flexDirection: "column", gap: 14 }}>
-
-              {/* Main image — capped height so right column is always visible */}
+            {/* LEFT: Gallery */}
+            <div className="pdp-left">
               <div
+                className="pdp-main-img-wrap"
                 onMouseEnter={() => setImgZoomed(true)}
                 onMouseLeave={() => setImgZoomed(false)}
-                style={{ position: "relative", width: "100%", height: "min(48vw, 520px)", borderRadius: 22, overflow: "hidden", background: "white", border: B, boxShadow: "0 8px 40px rgba(10,22,40,0.08)", cursor: imgZoomed ? "zoom-out" : "zoom-in" }}>
+                style={{ cursor: imgZoomed ? "zoom-out" : "zoom-in" }}>
                 <Image src={activeImg} alt={product.name} fill priority
                   style={{ objectFit: "cover", transform: imgZoomed ? "scale(1.09)" : "scale(1)", transition: "transform .55s cubic-bezier(0.16,1,0.3,1)" }} />
 
-                {/* Discount badge */}
                 {discountPct > 0 && (
                   <div style={{ position: "absolute", top: 14, left: 14, display: "flex", alignItems: "center", gap: 5, padding: "5px 11px", borderRadius: 10, background: N, boxShadow: "0 4px 12px rgba(10,22,40,0.22)" }}>
                     <Tag size={10} color="rgba(255,255,255,0.6)" />
@@ -244,7 +582,6 @@ export default function ProductDetailPage() {
                   </div>
                 )}
 
-                {/* Low stock badge */}
                 {product.stock > 0 && product.stock <= 5 && (
                   <div style={{ position: "absolute", top: 14, right: 14, display: "flex", alignItems: "center", gap: 5, padding: "5px 10px", borderRadius: 10, background: "#FFFBEB", border: "1px solid #FDE68A" }}>
                     <Flame size={10} color="#D97706" />
@@ -252,7 +589,6 @@ export default function ProductDetailPage() {
                   </div>
                 )}
 
-                {/* Out of stock overlay */}
                 {outOfStock && (
                   <div style={{ position: "absolute", inset: 0, background: "rgba(247,248,252,0.8)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center" }}>
                     <div style={{ padding: "12px 24px", borderRadius: 16, background: "white", border: "1px solid #FECDD3", boxShadow: "0 8px 24px rgba(10,22,40,0.10)" }}>
@@ -262,17 +598,17 @@ export default function ProductDetailPage() {
                 )}
               </div>
 
-              {/* Thumbnails */}
               {allImages.length > 1 && (
-                <div className="no-scrollbar" style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 4 }}>
+                <div className="pdp-thumbs">
                   {allImages.map((img, i) => (
                     <button key={i} onClick={() => setActiveImg(img)}
-                      style={{ position: "relative", width: 76, height: 76, borderRadius: 14, overflow: "hidden", flexShrink: 0, background: "white",
+                      className="pdp-thumb-btn"
+                      style={{
                         border: activeImg === img ? `2.5px solid ${N}` : "2px solid #E4E9F2",
-                        cursor: "pointer", transition: "all .2s",
                         transform: activeImg === img ? "scale(1.05)" : "scale(1)",
                         boxShadow: activeImg === img ? "0 4px 14px rgba(10,22,40,0.14)" : "none",
-                        filter: activeImg === img ? "none" : "grayscale(0.35)" }}>
+                        filter: activeImg === img ? "none" : "grayscale(0.35)",
+                      }}>
                       <Image src={img} alt={`View ${i + 1}`} fill style={{ objectFit: "cover" }} />
                     </button>
                   ))}
@@ -280,13 +616,13 @@ export default function ProductDetailPage() {
               )}
             </div>
 
-            {/* ── RIGHT: Product info ─────────────────────────── */}
-            <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-              style={{ display: "flex", flexDirection: "column", gap: 22 }}>
+            {/* RIGHT: Info */}
+            <motion.div className="pdp-right"
+              initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}>
 
-              {/* Store + stock pills */}
-              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              {/* Store + stock */}
+              <div className="pdp-pills">
                 {product.storeId && (
                   <Link href={storeHref}
                     style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "6px 12px 6px 8px", borderRadius: 10, background: N, textDecoration: "none", transition: "opacity .15s" }}>
@@ -299,89 +635,70 @@ export default function ProductDetailPage() {
                     <ChevronRight size={10} color="rgba(255,255,255,0.4)" />
                   </Link>
                 )}
-
-                {/* Stock chip */}
                 <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 10px", borderRadius: 9, background: stock.bg, border: `1px solid ${stock.border}` }}>
                   <div style={{ width: 6, height: 6, borderRadius: "50%", background: stock.color, animation: stock.pulse ? "pulse 1.5s ease-in-out infinite" : "none" }} />
                   <span style={{ fontSize: 10, fontWeight: 800, color: stock.color }}>{stock.label}</span>
                 </div>
               </div>
 
-              {/* Product name */}
-              <h1 style={{ fontFamily: "Instrument Serif, serif", fontSize: 38, color: N, margin: 0, letterSpacing: "-0.025em", lineHeight: 1.1 }}>
-                {product.name}
-              </h1>
+              {/* Title */}
+              <h1 className="pdp-title">{product.name}</h1>
 
-              {/* Price block */}
-              <div style={{ padding: "18px 20px", borderRadius: 18, background: "white", border: B, display: "flex", alignItems: "flex-end", gap: 16 }}>
-                <span style={{ fontFamily: "Instrument Serif, serif", fontSize: 42, color: N, lineHeight: 1, letterSpacing: "-0.02em" }}>
-                  {fmtRupee(product.price)}
-                </span>
+              {/* Price */}
+              <div className="pdp-price-block">
+                <span className="pdp-price-val">{fmtRupee(product.price)}</span>
                 {discountPct > 0 && (
                   <div style={{ display: "flex", flexDirection: "column", marginBottom: 5 }}>
-                    <span style={{ fontSize: 14, color: M, textDecoration: "line-through", fontWeight: 700 }}>
-                      {fmtRupee(product.mrp)}
-                    </span>
-                    <span style={{ fontSize: 11, fontWeight: 800, color: "#059669" }}>
-                      You save {fmtRupee(product.mrp - product.price)}
-                    </span>
+                    <span style={{ fontSize: 14, color: M, textDecoration: "line-through", fontWeight: 700 }}>{fmtRupee(product.mrp)}</span>
+                    <span style={{ fontSize: 11, fontWeight: 800, color: "#059669" }}>You save {fmtRupee(product.mrp - product.price)}</span>
                   </div>
                 )}
               </div>
 
               {/* Description */}
-              <div style={{ padding: "18px 20px", borderRadius: 18, background: "white", border: B }}>
+              <div className="pdp-desc-box">
                 <p style={{ fontSize: 8, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.14em", color: M, margin: "0 0 10px" }}>Description</p>
-                <p style={{ fontSize: 14, color: "#4B5775", lineHeight: 1.75, margin: 0, fontWeight: 500 }}>
-                  {product.description}
-                </p>
+                <p style={{ fontSize: 14, color: "#4B5775", lineHeight: 1.75, margin: 0, fontWeight: 500 }}>{product.description}</p>
               </div>
 
-              {/* Quantity picker */}
+              {/* Qty */}
               {!outOfStock && (
-                <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                <div className="pdp-qty-row">
                   <p style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.12em", color: M, margin: 0, flexShrink: 0 }}>Qty</p>
                   <div style={{ display: "inline-flex", alignItems: "center", background: "white", border: B, borderRadius: 14, overflow: "hidden" }}>
                     <button onClick={() => setQty(q => Math.max(1, q - 1))} disabled={qty <= 1}
                       style={{ width: 44, height: 44, display: "flex", alignItems: "center", justifyContent: "center", background: "none", border: "none", cursor: qty <= 1 ? "not-allowed" : "pointer", opacity: qty <= 1 ? 0.3 : 1, transition: "opacity .15s" }}>
                       <Minus size={13} color={N} />
                     </button>
-                    <span style={{ width: 48, textAlign: "center", fontSize: 15, fontWeight: 800, color: N, fontFamily: "DM Mono, monospace" }}>
-                      {qty}
-                    </span>
+                    <span style={{ width: 48, textAlign: "center", fontSize: 15, fontWeight: 800, color: N, fontFamily: "DM Mono, monospace" }}>{qty}</span>
                     <button onClick={() => setQty(q => Math.min(maxQty, q + 1))} disabled={qty >= maxQty}
                       style={{ width: 44, height: 44, display: "flex", alignItems: "center", justifyContent: "center", background: "none", border: "none", cursor: qty >= maxQty ? "not-allowed" : "pointer", opacity: qty >= maxQty ? 0.3 : 1, transition: "opacity .15s" }}>
                       <Plus size={13} color={N} />
                     </button>
                   </div>
-                  {qty > 1 && (
-                    <span style={{ fontSize: 13, color: M, fontWeight: 700 }}>
-                      = {fmtRupee(product.price * qty)}
-                    </span>
-                  )}
-                  {qty >= maxQty && (
-                    <span style={{ fontSize: 11, color: "#D97706", fontWeight: 700 }}>Max qty</span>
-                  )}
+                  {qty > 1 && <span style={{ fontSize: 13, color: M, fontWeight: 700 }}>= {fmtRupee(product.price * qty)}</span>}
+                  {qty >= maxQty && <span style={{ fontSize: 11, color: "#D97706", fontWeight: 700 }}>Max qty</span>}
                 </div>
               )}
 
-              {/* Info tiles */}
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                <InfoTile icon={Truck}        title="Shipping" sub="Free pan-India"  />
-                <InfoTile icon={ShieldCheck}  title="Seller"   sub="Verified store"  />
-                <InfoTile icon={RotateCcw}    title="Returns"  sub="7-day easy"      />
+              {/* Tiles */}
+              <div className="pdp-tiles">
+                <InfoTile icon={Truck}       title="Shipping" sub="Free pan-India" />
+                <InfoTile icon={ShieldCheck} title="Seller"   sub="Verified store" />
+                <InfoTile icon={RotateCcw}   title="Returns"  sub="7-day easy"     />
               </div>
 
-              {/* ── CTA buttons ──────────────────────────────── */}
-              <div style={{ display: "flex", gap: 12 }}>
-
-                {/* Add to bag */}
+              {/* CTA */}
+              <div className="pdp-cta-row">
                 <motion.button whileTap={{ scale: 0.97 }} onClick={handleAddToCart}
                   disabled={cartState !== "idle" || outOfStock}
-                  style={{ flex: "1.2", padding: "16px 18px", borderRadius: 16, cursor: outOfStock ? "not-allowed" : "pointer", fontFamily: "DM Sans, sans-serif", fontSize: 14, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, transition: "all .22s",
+                  className="pdp-btn-bag"
+                  style={{
                     background: cartState === "added" ? "#F0FDF4" : "white",
-                    border: cartState === "added" ? "2px solid #BBF7D0" : `2px solid ${outOfStock ? "#E4E9F2" : "#E4E9F2"}`,
-                    color: cartState === "added" ? "#059669" : outOfStock ? M : N }}>
+                    border: cartState === "added" ? "2px solid #BBF7D0" : `2px solid #E4E9F2`,
+                    color: cartState === "added" ? "#059669" : outOfStock ? M : N,
+                    cursor: outOfStock ? "not-allowed" : "pointer",
+                  }}>
                   <AnimatePresence mode="wait">
                     {cartState === "adding" && (
                       <motion.span key="ld" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -404,22 +721,23 @@ export default function ProductDetailPage() {
                   </AnimatePresence>
                 </motion.button>
 
-                {/* Buy now */}
                 <motion.button whileTap={{ scale: 0.97 }} onClick={handleBuyNow}
                   disabled={buyLoading || outOfStock}
-                  style={{ flex: "1.5", padding: "16px 18px", borderRadius: 16, border: "none", fontFamily: "DM Sans, sans-serif", fontSize: 14, fontWeight: 900, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, transition: "box-shadow .2s, transform .2s",
+                  className="pdp-btn-buy"
+                  style={{
                     background: outOfStock ? "#E4E9F2" : N,
                     color: outOfStock ? M : "white",
                     cursor: outOfStock ? "not-allowed" : "pointer",
-                    boxShadow: outOfStock ? "none" : "0 8px 24px rgba(10,22,40,0.22)" }}>
+                    boxShadow: outOfStock ? "none" : "0 8px 24px rgba(10,22,40,0.22)",
+                  }}>
                   {buyLoading
                     ? <><Loader2 size={15} style={{ animation: "spin 1s linear infinite" }} /> Processing…</>
                     : <><Zap size={15} fill={outOfStock ? M : "white"} /> Buy It Now</>}
                 </motion.button>
               </div>
 
-              {/* Razorpay trust line */}
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 7, padding: "10px", borderRadius: 12, background: "white", border: B }}>
+              {/* Trust */}
+              <div className="pdp-trust">
                 <Lock size={12} color={M} />
                 <span style={{ fontSize: 9, fontWeight: 800, color: M, textTransform: "uppercase", letterSpacing: "0.12em" }}>
                   Secure Payments by Razorpay · 256-bit SSL
@@ -431,39 +749,45 @@ export default function ProductDetailPage() {
         </div>
       </div>
 
-      {/* ── Sticky mobile CTA ──────────────────────────────────── */}
-      <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 60, background: "rgba(247,248,252,0.95)", backdropFilter: "blur(16px)", borderTop: B, padding: "10px 16px", display: "flex", alignItems: "center", gap: 10 }}>
-        <div style={{ flex: 1 }}>
+      {/* ── Sticky bottom bar ──────────────────────────────────── */}
+      <div className="pdp-mobile-bar">
+        <div style={{ flex: 1, minWidth: 0, overflow: "hidden" }}>
           <span style={{ fontFamily: "Instrument Serif, serif", fontSize: 22, color: N, lineHeight: 1, display: "block" }}>
             {fmtRupee(product.price * qty)}
           </span>
           {discountPct > 0 && (
-            <span style={{ fontSize: 9, fontWeight: 800, color: "#059669", display: "block" }}>
+            <span style={{ fontSize: 9, fontWeight: 800, color: "#059669", display: "block", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
               {discountPct}% off · MRP {fmtRupee(product.mrp * qty)}
             </span>
           )}
         </div>
 
-        {/* Bag */}
         <button onClick={handleAddToCart} disabled={cartState !== "idle" || outOfStock}
-          style={{ padding: "12px 16px", borderRadius: 13, border: cartState === "added" ? "2px solid #BBF7D0" : "2px solid #E4E9F2",
-            background: cartState === "added" ? "#F0FDF4" : "white", fontSize: 12, fontWeight: 800,
+          style={{ padding: "12px 16px", borderRadius: 13,
+            border: cartState === "added" ? "2px solid #BBF7D0" : "2px solid #E4E9F2",
+            background: cartState === "added" ? "#F0FDF4" : "white",
+            fontSize: 12, fontWeight: 800,
             color: cartState === "added" ? "#059669" : outOfStock ? M : N,
-            cursor: outOfStock ? "not-allowed" : "pointer", fontFamily: "DM Sans, sans-serif",
-            display: "flex", alignItems: "center", gap: 6, flexShrink: 0, transition: "all .2s" }}>
+            cursor: outOfStock ? "not-allowed" : "pointer",
+            fontFamily: "DM Sans, sans-serif",
+            display: "flex", alignItems: "center", gap: 6,
+            flexShrink: 0, transition: "all .2s", whiteSpace: "nowrap" }}>
           {cartState === "added"
             ? <><CheckCircle2 size={14} color="#059669" /> Added!</>
             : <><ShoppingBag size={14} /> Bag</>}
         </button>
 
-        {/* Buy now */}
         <button onClick={handleBuyNow} disabled={buyLoading || outOfStock}
           style={{ padding: "12px 22px", borderRadius: 13, border: "none",
-            background: outOfStock ? "#E4E9F2" : N, fontSize: 13, fontWeight: 900,
+            background: outOfStock ? "#E4E9F2" : N,
+            fontSize: 13, fontWeight: 900,
             color: outOfStock ? M : "white",
-            cursor: outOfStock ? "not-allowed" : "pointer", fontFamily: "DM Sans, sans-serif",
-            display: "flex", alignItems: "center", gap: 6, flexShrink: 0,
-            boxShadow: outOfStock ? "none" : "0 4px 16px rgba(10,22,40,0.2)", transition: "all .2s" }}>
+            cursor: outOfStock ? "not-allowed" : "pointer",
+            fontFamily: "DM Sans, sans-serif",
+            display: "flex", alignItems: "center", gap: 6,
+            flexShrink: 0,
+            boxShadow: outOfStock ? "none" : "0 4px 16px rgba(10,22,40,0.2)",
+            transition: "all .2s", whiteSpace: "nowrap" }}>
           <Zap size={14} fill={outOfStock ? M : "white"} />
           Buy Now
         </button>
