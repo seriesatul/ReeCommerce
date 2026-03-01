@@ -79,7 +79,7 @@ function AnimatedNumber({ value, prefix = "", suffix = "" }: {
   value: number; prefix?: string; suffix?: string;
 }) {
   const [display, setDisplay] = useState(0);
-  const ref = useRef(value);
+  const ref = useRef(0);
   useEffect(() => {
     const start = ref.current;
     const end   = value;
@@ -116,6 +116,10 @@ export default function SellerDashboardHome() {
   const [refreshing, setRefreshing] = useState(false);
 
   // ── Data fetch — useCallback so range is never stale ───────────
+// ── Drop-in replacement for the fetchAll function in SellerDashboardHome ──
+  // Replace the entire fetchAll = useCallback(async (silent = false) => { ... }, [range])
+  // block with this version.
+
   const fetchAll = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     else setRefreshing(true);
@@ -123,13 +127,14 @@ export default function SellerDashboardHome() {
       const analyticsRes  = await fetch(`/api/seller/analytics?range=${range}`);
       const analyticsData = await analyticsRes.json();
 
-      // Log debug info from API so we can see what's returned
       console.log("[dashboard] analytics response:", {
-        ok:         analyticsRes.ok,
-        status:     analyticsRes.status,
-        debug:      analyticsData._debug,
-        statsRows:  analyticsData.revenueStats?.length,
-        engagement: analyticsData.engagement,
+        ok:           analyticsRes.ok,
+        status:       analyticsRes.status,
+        debug:        analyticsData._debug,
+        totalRevenue: analyticsData.totalRevenue,
+        totalOrders:  analyticsData.totalOrders,
+        chartPoints:  analyticsData.revenueStats?.length,
+        engagement:   analyticsData.engagement,
       });
 
       if (!analyticsRes.ok) {
@@ -137,18 +142,23 @@ export default function SellerDashboardHome() {
         return;
       }
 
-      // ── Number() coercion guards against MongoDB returning strings ──
+      // ── Chart time-series ────────────────────────────────────────
       const points: RevenuePoint[] = (analyticsData.revenueStats || []).map((p: any) => ({
         date:    String(p.date    ?? ""),
         revenue: Number(p.revenue ?? 0),
         orders:  Number(p.orders  ?? 0),
       }));
 
-      const totalRev   = points.reduce((a, b) => a + b.revenue, 0);
-      const totalOrd   = points.reduce((a, b) => a + b.orders,  0);
+      // ── KPI values — read directly from API, not from chart sum ──
+      // The API now returns totalRevenue / totalOrders as dedicated fields.
+      // Computing them by summing revenueStats was wrong because:
+      //   (a) revenueStats is scoped to the chart date range
+      //   (b) COD orders with paymentStatus:"pending" were excluded by old PAID_FILTER
+      const totalRev   = Number(analyticsData.totalRevenue ?? 0);
+      const totalOrd   = Number(analyticsData.totalOrders  ?? 0);
       const totalViews = Number(analyticsData.engagement?.totalViews ?? 0);
 
-      console.log("[dashboard] computed totals:", { totalRev, totalOrd, totalViews });
+      console.log("[dashboard] KPI values:", { totalRev, totalOrd, totalViews });
 
       setStats({
         revenue:     totalRev,

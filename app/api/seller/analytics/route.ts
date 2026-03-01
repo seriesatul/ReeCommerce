@@ -7,18 +7,12 @@ import Store from "@/models/Store";
 import Reel from "@/models/Reel";
 import mongoose from "mongoose";
 
-// ─── Paid order filter ────────────────────────────────────────────
-// Primary:  paymentStatus === "completed"  (Razorpay verify sets this)
-// Fallback: status is beyond pending/cancelled, covers cases where
-//           checkout sets status but forgets to set paymentStatus.
-const PAID_FILTER = {
-  $or: [
-    { paymentStatus: "completed" },
-    {
-      paymentStatus: { $ne: "failed" },
-      status: { $in: ["processing", "shipped", "delivered"] },
-    },
-  ],
+// ─── Order filter ─────────────────────────────────────────────────
+// Includes COD (paymentStatus: "pending") and paid online orders.
+// Only excludes explicitly failed or cancelled orders.
+const ACTIVE_FILTER = {
+  paymentStatus: { $nin: ["failed", "refunded"] },
+  status:        { $nin: ["cancelled"] },
 };
 
 export async function GET(request: Request) {
@@ -46,23 +40,38 @@ export async function GET(request: Request) {
     const prevStart   = new Date(periodStart);
     prevStart.setDate(periodStart.getDate() - days);
 
-    // ─── Debug logging ────────────────────────────────────────────
-    const totalOrders = await Order.countDocuments({ storeId });
-    const paidOrders  = await Order.countDocuments({ storeId, ...PAID_FILTER });
-    console.log(`[analytics] storeId=${storeId} total=${totalOrders} paid=${paidOrders} range=${range}`);
+    // ─── Debug ────────────────────────────────────────────────────
+    const totalOrders  = await Order.countDocuments({ storeId });
+    const activeOrders = await Order.countDocuments({ storeId, ...ACTIVE_FILTER });
+    console.log(`[analytics] storeId=${storeId} total=${totalOrders} active=${activeOrders} range=${range}`);
 
-    if (totalOrders > 0 && paidOrders === 0) {
-      const sample = await Order.find({ storeId })
-        .limit(3).select("paymentStatus status totalAmount").lean();
-      console.warn("[analytics] unpaid sample:", JSON.stringify(sample));
-    }
+    // ─── 1. KPI totals — current period ──────────────────────────
+    // These are the source of truth for the 4 KPI cards.
+    // Computed independently from the chart time-series.
+    const kpiAgg = await Order.aggregate([
+      {
+        $match: {
+          storeId,
+          ...ACTIVE_FILTER,
+          createdAt: { $gte: periodStart, $lte: now },
+        },
+      },
+      {
+        $group: {
+          _id:     null,
+          revenue: { $sum: { $toDouble: "$totalAmount" } },
+          orders:  { $sum: 1 },
+        },
+      },
+    ]);
+    const kpi = kpiAgg[0] ?? { revenue: 0, orders: 0 };
 
-    // ─── 1. Revenue over time (current period) ────────────────────
+    // ─── 2. Revenue chart time-series — current period ────────────
     const revenueStatsRaw = await Order.aggregate([
       {
         $match: {
           storeId,
-          ...PAID_FILTER,
+          ...ACTIVE_FILTER,
           createdAt: { $gte: periodStart, $lte: now },
         },
       },
@@ -82,12 +91,12 @@ export async function GET(request: Request) {
       orders:  Number(d.orders)  || 0,
     }));
 
-    // ─── 2. Previous period totals ────────────────────────────────
+    // ─── 3. Previous period totals (for trend % badges) ──────────
     const prevAgg = await Order.aggregate([
       {
         $match: {
           storeId,
-          ...PAID_FILTER,
+          ...ACTIVE_FILTER,
           createdAt: { $gte: prevStart, $lt: periodStart },
         },
       },
@@ -101,7 +110,7 @@ export async function GET(request: Request) {
     ]);
     const prev = prevAgg[0] ?? { revenue: 0, orders: 0 };
 
-    // ─── 3. Engagement ────────────────────────────────────────────
+    // ─── 4. Engagement ────────────────────────────────────────────
     const engAgg = await Reel.aggregate([
       { $match: { storeId } },
       {
@@ -119,9 +128,9 @@ export async function GET(request: Request) {
       { $group: { _id: null, totalViews: { $sum: { $ifNull: ["$viewsCount", 0] } } } },
     ]);
 
-    // ─── 4. Top products by revenue ───────────────────────────────
+    // ─── 5. Top products ──────────────────────────────────────────
     const topProducts = await Order.aggregate([
-      { $match: { storeId, ...PAID_FILTER } },
+      { $match: { storeId, ...ACTIVE_FILTER } },
       { $unwind: "$items" },
       {
         $group: {
@@ -129,17 +138,20 @@ export async function GET(request: Request) {
           name:         { $first: "$items.name" },
           totalRevenue: {
             $sum: {
-              $multiply: [{ $toDouble: "$items.priceAtPurchase" }, "$items.quantity"],
+              $multiply: [
+                { $toDouble: { $ifNull: ["$items.priceAtPurchase", 0] } },
+                { $ifNull: ["$items.quantity", 1] },
+              ],
             },
           },
-          totalSold: { $sum: "$items.quantity" },
+          totalSold: { $sum: { $ifNull: ["$items.quantity", 1] } },
         },
       },
       { $sort: { totalRevenue: -1 } },
       { $limit: 5 },
     ]);
 
-    // ─── 5. Top reels ─────────────────────────────────────────────
+    // ─── 6. Top reels ─────────────────────────────────────────────
     const topReelsRaw = await Reel.find({ storeId })
       .sort({ viewsCount: -1 })
       .limit(5)
@@ -148,7 +160,7 @@ export async function GET(request: Request) {
 
     const topReels = topReelsRaw.map((r: any) => ({
       _id:          r._id,
-      title:        r.title || r.productId?.name || "Untitled",
+      title:        r.title || (r.productId as any)?.name || "Untitled",
       thumbnailUrl: r.thumbnailUrl ?? "",
       views:        Number(r.viewsCount) || 0,
       likes:        Number(r.likesCount) || 0,
@@ -158,17 +170,34 @@ export async function GET(request: Request) {
     }));
 
     return NextResponse.json({
+      // KPI totals — frontend reads these directly for cards
+      totalRevenue: Number(kpi.revenue) || 0,
+      totalOrders:  Number(kpi.orders)  || 0,
+
+      // Chart time-series
       revenueStats,
+
+      // Engagement
       engagement: {
         totalViews: Number(engagement.totalViews) || 0,
         totalLikes: Number(engagement.totalLikes) || 0,
       },
-      topProducts,
-      topReels,
+
+      // Previous period for trend badges
       prevRevenue: Number(prev.revenue) || 0,
       prevOrders:  Number(prev.orders)  || 0,
       prevViews:   Number(prevReelsAgg[0]?.totalViews) || 0,
-      _debug: { totalOrders, paidOrders, storeId: storeId.toString(), range },
+
+      topProducts,
+      topReels,
+
+      _debug: {
+        totalOrders, activeOrders,
+        kpiRevenue: kpi.revenue,
+        kpiOrders:  kpi.orders,
+        storeId:    storeId.toString(),
+        range,
+      },
     });
 
   } catch (error: any) {
