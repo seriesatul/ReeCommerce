@@ -5,129 +5,205 @@ import { authOptions } from "@/lib/auth";
 import connectDB from "@/lib/db/connect";
 import Cart from "@/models/Cart";
 import Order from "@/models/Order";
-import Product from "@/models/Products"; 
-import Store from "@/models/Store";       
-import User from "@/models/User";         
+import Product from "@/models/Products";
+import Store from "@/models/Store";
+import User from "@/models/User";
 import { createNotification } from "@/lib/notifications";
 import { pusherServer } from "@/lib/pusher";
 
 export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
     const body = await req.json();
-    const { 
-      razorpay_order_id, 
-      razorpay_payment_id, 
+    const {
+      razorpay_order_id,
+      razorpay_payment_id,
       razorpay_signature,
-      address // FIXED: Extracting the real address from the frontend request
+      address,
     } = body;
 
-    // 1. Cryptographic Signature Verification
-    const secret = process.env.RAZORPAY_KEY_SECRET;
+    // ── 1. Validate address before doing anything else ─────────────
+    if (
+      !address?.fullName ||
+      !address?.street   ||
+      !address?.city     ||
+      !address?.state    ||
+      !address?.zipCode
+    ) {
+      return NextResponse.json({ error: "Shipping address is incomplete" }, { status: 400 });
+    }
+
+    // ── 2. Cryptographic signature verification ────────────────────
+    const secret = process.env.NEXT_PUBLIC_RAZORPAY_KEY_SECRET;
     if (!secret) {
-      console.error("RAZORPAY_KEY_SECRET is missing in ENV");
+      console.error("[verify] RAZORPAY_KEY_SECRET missing in ENV");
       return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
     }
 
     const generated_signature = crypto
       .createHmac("sha256", secret)
-      .update(razorpay_order_id + "|" + razorpay_payment_id)
+      .update(`${razorpay_order_id}|${razorpay_payment_id}`)
       .digest("hex");
 
     if (generated_signature !== razorpay_signature) {
       return NextResponse.json({ error: "Payment verification failed" }, { status: 400 });
     }
 
-    // 2. Database Processing
     await connectDB();
-    
-    // Populate products to get prices and store IDs for routing the money
+
+    // ── 3. Idempotency guard — prevent duplicate orders ────────────
+    // If this Razorpay order ID was already processed (e.g. double-tap,
+    // webhook retry), return the existing order instead of creating again.
+    const existingOrder = await Order.findOne({ razorpayOrderId: razorpay_order_id }).lean();
+    if (existingOrder) {
+      console.warn("[verify] duplicate call for", razorpay_order_id);
+      return NextResponse.json({
+        success: true,
+        orderId: (existingOrder as any)._id.toString(),
+      });
+    }
+
+    // ── 4. Load cart ───────────────────────────────────────────────
     const cart = await Cart.findOne({ userId: session.user.id }).populate({
-        path: "items.productId",
-        model: Product
+      path:  "items.productId",
+      model: Product,
     });
 
     if (!cart || cart.items.length === 0) {
       return NextResponse.json({ error: "Cart is empty or already processed" }, { status: 404 });
     }
 
-    // MULTIVENDOR LOGIC: Group items by Store
+    // Skip items whose product was deleted after it was carted
+    const validItems = cart.items.filter((item: any) => item.productId != null);
+    if (validItems.length === 0) {
+      return NextResponse.json({ error: "All cart products are no longer available" }, { status: 400 });
+    }
+
+    // ── 5. Atomic stock decrement (prevents overselling) ──────────
+    // Only decrements if current stock >= requested quantity.
+    // On failure, rolls back already-decremented items.
+    for (let idx = 0; idx < validItems.length; idx++) {
+      const item   = validItems[idx];
+      const result = await Product.updateOne(
+        { _id: item.productId._id, stock: { $gte: item.quantity } },
+        { $inc: { stock: -item.quantity } }
+      );
+
+      if (result.matchedCount === 0) {
+        // Roll back items decremented before this one
+        await Promise.all(
+          validItems.slice(0, idx).map((prev: any) =>
+            Product.updateOne(
+              { _id: prev.productId._id },
+              { $inc: { stock: prev.quantity } }
+            )
+          )
+        );
+        return NextResponse.json(
+          {
+            error: `"${item.productId.name}" just went out of stock. Please update your cart.`,
+          },
+          { status: 409 }
+        );
+      }
+    }
+
+    // ── 6. Group cart items by store (multivendor) ─────────────────
     const storeGroups: Record<string, any[]> = {};
-    cart.items.forEach((item: any) => {
+    for (const item of validItems) {
       const storeId = item.productId.storeId.toString();
       if (!storeGroups[storeId]) storeGroups[storeId] = [];
       storeGroups[storeId].push(item);
-    });
+    }
 
-    // Create unique orders for each seller involved in the cart
-    const orderPromises = Object.entries(storeGroups).map(async ([storeId, items]) => {
-      const totalAmount = items.reduce((sum, item) => sum + (item.productId.price * item.quantity), 0);
+    // ── 7. Create one Order document per store ─────────────────────
+    const createdOrders: any[] = [];
 
-      // Create the Order Document with the Real Address
+    for (const [storeId, items] of Object.entries(storeGroups)) {
+      const totalAmount = items.reduce(
+        (sum, item) => sum + item.productId.price * item.quantity,
+        0
+      );
+
       const newOrder = await Order.create({
-        buyerId: session.user.id,
-        storeId: storeId,
+        buyerId:   session.user.id,
+        storeId,
         items: items.map((i: any) => ({
-          productId: i.productId._id,
-          name: i.productId.name,
-          quantity: i.quantity,
-          priceAtPurchase: i.productId.price
+          productId:       i.productId._id,
+          name:            i.productId.name,
+          image:           i.productId.imageUrl ?? i.productId.images?.[0] ?? "",
+          quantity:        i.quantity,
+          priceAtPurchase: i.productId.price,
         })),
         totalAmount,
-        status: "processing",
-        paymentStatus: "completed",
-        razorpayOrderId: razorpay_order_id,
+        status:            "processing",
+        paymentStatus:     "completed",
+        paymentMethod:     "online",
+        razorpayOrderId:   razorpay_order_id,
         razorpayPaymentId: razorpay_payment_id,
-        shippingAddress: address // FIXED: Saving the actual address provided by user
+        shippingAddress:   address,
       });
 
-      // INVENTORY MANAGEMENT: Decrement Stock
-      for (const item of items) {
-        await Product.findByIdAndUpdate(item.productId._id, { $inc: { stock: -item.quantity } });
-      }
+      createdOrders.push(newOrder);
 
-      // NOTIFICATIONS & REAL-TIME UPDATES
-      const store = await Store.findById(storeId).populate({
-        path: "ownerId",
-        model: User
-      });
+      // ── 8. Notify seller ──────────────────────────────────────────
+      try {
+        const store = await Store.findById(storeId).populate({
+          path:   "ownerId",
+          model:  User,
+          select: "_id name",
+        });
 
-      if (store) {
-        const sellerUserId = (store.ownerId as any)._id.toString();
+        const sellerId  = (store?.ownerId as any)?._id?.toString();
+        if (!sellerId) {
+          console.warn("[verify] cannot resolve sellerId for store", storeId);
+          continue;
+        }
 
-        // Save to Database Notifications
+        const buyerName = session.user.name ?? "A buyer";
+        const shortId   = newOrder._id.toString().slice(-6).toUpperCase();
+
         await createNotification({
-          recipientId: sellerUserId,
-          type: "PURCHASE",
-          title: "New Order! 💰",
-          message: `Order #${newOrder._id.toString().slice(-6)} received for ₹${totalAmount}`,
-          link: "/dashboard/seller/orders"
+          recipientId: sellerId,
+          type:    "PURCHASE",
+          title:   "New Order! 💰",
+          message: `Order #${shortId} · ₹${totalAmount.toLocaleString()} from ${buyerName}`,
+          link:    `/dashboard/seller/orders`,
         });
 
-        // Trigger Real-Time WebSocket Event via Pusher
-        await pusherServer.trigger(`user-${sellerUserId}`, "new-notification", {
-            title: "New Sale! 💰",
-            message: `You just made ₹${totalAmount}`,
-            type: "PURCHASE",
-            link: "/dashboard/seller/orders"
+        // All fields consumed by connected listeners:
+        //   seller dashboard → data.amount, data.buyerName (KPI + toast)
+        //   order tracking   → data.orderId (selective re-fetch)
+        await pusherServer.trigger(`user-${sellerId}`, "new-notification", {
+          type:      "PURCHASE",
+          title:     "New Sale! 💰",
+          message:   `₹${totalAmount.toLocaleString()} from ${buyerName}`,
+          amount:    totalAmount,
+          buyerName,
+          orderId:   newOrder._id.toString(),
+          link:      `/dashboard/seller/orders`,
         });
+
+      } catch (notifyErr) {
+        // Notification failure must never roll back the order
+        console.error("[verify] notification error store", storeId, notifyErr);
       }
+    }
 
-      return newOrder;
-    });
-
-    await Promise.all(orderPromises);
-
-    // 3. Clear Cart after successful order generation
+    // ── 9. Clear cart ──────────────────────────────────────────────
     cart.items = [];
     await cart.save();
 
-    return NextResponse.json({ success: true });
+    // Return primary order ID for the success page → /orders/[id]
+    const primaryOrderId = createdOrders[0]?._id?.toString();
+    return NextResponse.json({ success: true, orderId: primaryOrderId });
 
   } catch (error: any) {
-    console.error("VERIFICATION_CRASH:", error);
+    console.error("[checkout/verify] CRASH:", error);
     return NextResponse.json({ error: "Order fulfillment failed" }, { status: 500 });
   }
 }

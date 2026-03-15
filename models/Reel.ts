@@ -17,13 +17,34 @@ export interface IReel {
   thumbnailUrl:   string;
   isMultiProduct: boolean;
   hotspots:       IHotspot[];
-  likesCount:     number;
-  viewsCount:     number;
-  score:          number;
-  // Extra fields stored via strict:false from PATCH route
+
+  // Soft metadata (written via PATCH route)
   title?:       string;
   description?: string;
   isPublished?: boolean;
+  tags?:        string[];
+  aspectRatio?: "9:16" | "1:1" | "16:9";
+
+  // ── Engagement counters ──────────────────────────────────────────
+  // Always update with $inc — never $set directly
+  likesCount:    number;
+  viewsCount:    number;
+  sharesCount:   number;   // future
+  commentsCount: number;   // future
+  score:         number;
+
+  // ── Social arrays — SOURCE OF TRUTH ─────────────────────────────
+  // likedBy: every user who liked this reel.
+  //   Query:  Reel.find({ likedBy: userId })   ← always real-time
+  //   Like:   $addToSet: { likedBy: userId }   ← idempotent
+  //   Unlike: $pull:     { likedBy: userId }
+  likedBy: mongoose.Types.ObjectId[];
+
+  // savedBy: bookmarks (future feature)
+  savedBy: mongoose.Types.ObjectId[];
+
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
 const HotspotSchema = new Schema<IHotspot>({
@@ -43,17 +64,34 @@ const ReelSchema = new Schema<IReel>(
     thumbnailUrl:   { type: String, required: true },
     isMultiProduct: { type: Boolean, default: false },
     hotspots:       { type: [HotspotSchema], default: [] },
-    likesCount:     { type: Number, default: 0 },
-    viewsCount:     { type: Number, default: 0 },
-    score:          { type: Number, default: 0, index: true },
-    // Optional soft fields — written by PATCH via strict:false
-    title:          { type: String, default: "" },
-    description:    { type: String, default: "" },
-    isPublished:    { type: Boolean, default: true },
+
+    // Soft metadata
+    title:       { type: String,  default: "" },
+    description: { type: String,  default: "" },
+    isPublished: { type: Boolean, default: true },
+    tags:        { type: [String], default: [] },
+    aspectRatio: { type: String, enum: ["9:16", "1:1", "16:9"], default: "9:16" },
+
+    // Counters — $inc only
+    likesCount:    { type: Number, default: 0, min: 0 },
+    viewsCount:    { type: Number, default: 0, min: 0 },
+    sharesCount:   { type: Number, default: 0, min: 0 },
+    commentsCount: { type: Number, default: 0, min: 0 },
+    score:         { type: Number, default: 0, index: true },
+
+    // Social arrays
+    likedBy: [{ type: Schema.Types.ObjectId, ref: "User" }],
+    savedBy: [{ type: Schema.Types.ObjectId, ref: "User" }],
   },
   { timestamps: true }
 );
 
+// Indexes for every common access pattern
+ReelSchema.index({ likedBy: 1 });                  // ← profile liked-reels page
+ReelSchema.index({ savedBy: 1 });                  // future bookmarks page
+ReelSchema.index({ storeId: 1, createdAt: -1 });   // store reel feed
+ReelSchema.index({ isPublished: 1, score: -1 });   // discovery / home feed
+ReelSchema.index({ tags: 1 });                     // hashtag search
 ReelSchema.index({ "hotspots.startTime": 1 });
 
 const Reel = models?.Reel || model<IReel>("Reel", ReelSchema);

@@ -538,16 +538,9 @@ export default function Navbar() {
                           <p className="text-[10px] font-bold uppercase tracking-widest text-[#9BA8C0] mt-0.5">{userRole}</p>
                         </div>
                         <div className="p-2 space-y-0.5">
-                          {userRole === "admin" && (
-                            <MRow href="/admin/dashboard" icon={<ShieldCheck className="w-4 h-4 text-amber-500" />} onClick={() => setIsMenuOpen(false)}>
-                              Admin Console
-                            </MRow>
-                          )}
-                          {userRole === "seller" && (
-                            <MRow href="/dashboard/seller" icon={<LayoutDashboard className="w-4 h-4 text-[#0A1628]" />} onClick={() => setIsMenuOpen(false)}>
-                              Dashboard
-                            </MRow>
-                          )}
+                         <MRow href="/profile" icon={<User className="w-4 h-4 text-[#9BA8C0]" />} onClick={() => setIsMenuOpen(false)}>
+                            My Profile
+                          </MRow>
                           <MRow href="/onboarding/buyer" icon={<User className="w-4 h-4 text-[#9BA8C0]" />} onClick={() => setIsMenuOpen(false)}>
                             Preferences
                           </MRow>
